@@ -8,7 +8,7 @@ game/dist-minitool/
 # 影片原始素材（版权属片方）
 movie-clips/
 
-# GooFstore 购买的 3D 模型：付费商品，无再分发授权
+# 模型原始下载包（几百兆的 fbx/obj/stl/3mf，仓库里只放烘好的 glb）
 NiuLai_*-3d-model-goofstore/
 牛来/
 牛来.fbx
@@ -17,10 +17,6 @@ NiuLai_*-3d-model-goofstore/
 *.obj
 *.stl
 *.3mf
-
-# 由上面这些烘出来的运行时模型，同样不分发
-game/public/*.glb
-game/minitool/models.js
 
 # 从影片提取的台词片段（未授权），及其内嵌副本
 game/public/voice/niulai.mp3
