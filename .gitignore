@@ -1,0 +1,36 @@
+# ---- 依赖与产物 ----
+node_modules/
+game/dist/
+game/dist-minitool/
+*.zip
+
+# ---- 第三方素材，不进公开仓库 ----
+# 影片原始素材（版权属片方）
+movie-clips/
+
+# GooFstore 购买的 3D 模型：付费商品，无再分发授权
+NiuLai_*-3d-model-goofstore/
+牛来/
+牛来.fbx
+牛来带骨骼.obj
+*.fbx
+*.obj
+*.stl
+*.3mf
+
+# 由上面这些烘出来的运行时模型，同样不分发
+game/public/*.glb
+game/minitool/models.js
+
+# 从影片提取的台词片段（未授权），及其内嵌副本
+game/public/voice/niulai.mp3
+game/public/voice/mother.mp3
+game/public/voice/baola.mp3
+game/minitool/voices.js
+
+# ---- 杂项 ----
+.claude/
+.DS_Store
+game/public/_icon.html
+__pycache__/
+*.pyc

@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <title>牛来 · 梦醒之前</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; overflow: hidden; background: #0d1014; }
+    /* 必须是 none。manipulation 之下浏览器仍会把纵向拖拽认成滚动，
+       半路发 pointercancel 把摇杆掐掉，表现就是"摇杆推不动"。 */
+    html, body { touch-action: none; overscroll-behavior: none; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "PingFang SC",
+                   "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      -webkit-font-smoothing: antialiased;
+      -webkit-tap-highlight-color: transparent;
+      -webkit-touch-callout: none;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+    #gl, #ui { position: fixed; inset: 0; width: 100%; height: 100%; touch-action: none; }
+    #gl { z-index: 0; display: block; }
+    #ui { z-index: 10; }
+    #ui canvas { display: block; width: 100% !important; height: 100% !important; touch-action: none; }
+    #fatal {
+      display: none; position: fixed; z-index: 99;
+      left: 50%; top: 50%; transform: translate(-50%, -50%);
+      max-width: 80%; padding: 16px 20px; border-radius: 10px;
+      background: rgba(20, 18, 16, .92); color: #f0e6d2;
+      font-size: 14px; line-height: 1.6; text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="gl"></canvas>
+  <div id="ui"></div>
+  <div id="fatal"></div>
+  <script src="./assets/app.js"></script>
+</body>
+</html>

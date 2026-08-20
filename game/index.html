@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>牛来 · 梦醒之前</title>
+<style>
+  :root { color-scheme: dark; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 100%; height: 100%; overflow: hidden;
+    background: #16150f;
+    font-family: "PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    -webkit-tap-highlight-color: transparent;
+    overscroll-behavior: none;
+    touch-action: none;
+  }
+  #app { position: fixed; inset: 0; }
+  #gl { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  #ui { position: absolute; inset: 0; }
+  #ui canvas { touch-action: none; }
+
+  #help {
+    position: absolute; left: 14px; bottom: 12px; z-index: 20;
+    color: rgba(255,255,255,.42); font-size: 11px; line-height: 1.7;
+    pointer-events: none; user-select: none; letter-spacing: .3px;
+    opacity: 0; transition: opacity .5s;
+  }
+  #help b { color: rgba(255,255,255,.62); font-weight: 600; }
+  @media (max-width: 720px) { #help { display: none; } }
+
+  #fatal {
+    display: none; position: absolute; inset: 0; z-index: 99;
+    background: #16150f; color: #e8e0cc; padding: 40px;
+    font-size: 14px; line-height: 1.9;
+  }
+</style>
+</head>
+<body>
+  <div id="app">
+    <canvas id="gl"></canvas>
+    <div id="ui"></div>
+    <div id="help">
+      <b>WASD / 方向键</b> 走　<b>Shift</b> 跑　<b>空格</b> 跳（云雀按住不放＝一直飞）　<b>鼠标拖拽</b> 转视角　<b>滚轮</b> 远近<br>
+      <b>E / 点击</b> 交谈、推进对话　<b>1-4</b> 选选项　<b>P</b> 直立 / 四足<br>
+      <b>Q</b> 换动物：牛来 / 牛妈 / 豹拉 / 狗 / 云雀　<b>V</b> 换视角：第三人称 / 肩后 / 第一人称　<b>T</b> 换时辰<br>
+      <b>Z</b> 牛来喊「妈妈」　<b>X</b> 牛妈喊「牛来」　<b>C</b> 豹拉　<b>M</b> 静音　<b>B</b> 环境音（默认关）<br>
+      <b>Shift+1~5</b> 跳章（标题页底部也能直接选章）<br>
+      触屏：右下摇杆走动，左侧 <b>跳 / 叫 / 换 / 视角 / 时辰</b>（云雀长按「飞」持续升空），拖拽空白处转视角
+    </div>
+    <div id="fatal"></div>
+  </div>
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
