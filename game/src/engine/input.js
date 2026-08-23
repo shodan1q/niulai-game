@@ -11,12 +11,17 @@ const KEY_MAP = {
 
 const CONFIRM_KEYS = new Set(['Enter', 'KeyE', 'NumpadEnter']);
 const JUMP_KEYS = new Set(['Space']);
+const DEAD = 0.12;      // 摇杆死区
 
 export class Input {
   constructor() {
     this.keys = new Set();
     this.axis = { x: 0, y: 0 };   // -1..1，已归一化
     this.run = false;
+    this.mag = 0;                 // 推杆幅度 0~1，键盘时为 1
+    this.stickDriven = false;     // 这一帧是摇杆在开车，不是键盘
+    this._stickRun = false;
+    this.stickZone = null;        // 由 Game 注入，取自界面里摇杆底座的位置
 
     // 一次性事件，读完即清
     this.confirmPressed = false;
@@ -86,7 +91,7 @@ export class Input {
     this.pointer.id = id;
     this._dragged = 0;
     this._lastX = x; this._lastY = y;
-    if (isTouch && x > this._vw() * 0.42) {
+    if (isTouch && this._inStickZone(x, y)) {
       this.stick.active = true;
       this.stick.id = id;
       this.stick.ox = x; this.stick.oy = y;
@@ -95,6 +100,15 @@ export class Input {
   }
 
   _vw() { return this.viewport?.().w || innerWidth || 360; }
+  _vh() { return this.viewport?.().h || innerHeight || 640; }
+
+  // 摇杆区。原来是"右半屏随便按"，结果整块屏幕都被摇杆吃掉，
+  // 转视角没地方落手。现在只圈右下角拇指够得着的一块。
+  _inStickZone(x, y) {
+    const z = this.stickZone?.();
+    if (!z) return x > this._vw() * 0.42 && y > this._vh() * 0.45;   // 没注入时的退路
+    return x >= z.x && y >= z.y;
+  }
 
   onPointerMove(x, y) {
     if (!this.pointer.down) { this.pointer.x = x; this.pointer.y = y; return; }
@@ -133,11 +147,23 @@ export class Input {
     if (this.keys.has('right')) x += 1;
     if (this.keys.has('up')) y -= 1;
     if (this.keys.has('down')) y += 1;
+    const keyed = x !== 0 || y !== 0;
     if (this.stick.active) { x += this.stick.x; y += this.stick.y; }
     const len = Math.hypot(x, y);
     if (len > 1) { x /= len; y /= len; }
     this.axis.x = x; this.axis.y = y;
-    this.run = this.keys.has('run');
+
+    // 推杆幅度。键盘永远是满的，摇杆按实际推了多远算。
+    // 手机上就靠这个值决定走还是跑，没有 Shift 键，不这么做永远跑不起来，
+    // 也就永远跳不过那条河。
+    this.stickDriven = this.stick.active && !keyed;
+    const raw = this.stickDriven ? Math.min(1, Math.hypot(this.stick.x, this.stick.y)) : (keyed ? 1 : 0);
+    this.mag = raw <= DEAD ? 0 : (raw - DEAD) / (1 - DEAD);   // 去掉死区再拉回 0~1
+
+    // 迟滞：过 0.82 算跑，掉到 0.62 以下才算停，卡在边界上不会来回抖
+    if (this.mag > 0.82) this._stickRun = true;
+    else if (this.mag < 0.62) this._stickRun = false;
+    this.run = this.keys.has('run') || (this.stickDriven && this._stickRun);
   }
 
   // 消费型读取 -----------------------------------------------------------

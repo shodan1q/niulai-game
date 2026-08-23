@@ -550,6 +550,13 @@ export class Overlay {
     ];
   }
 
+  // 摇杆的感应区，右下角一块。这块之外的拖拽全部归转视角。
+  stickZone() {
+    const h = this.stickHome();
+    const pad = h.r * 2.3;
+    return { x: Math.max(this.vw() * 0.42, h.x - pad), y: Math.max(0, h.y - pad) };
+  }
+
   stickHome() {
     const W = this.vw(), H = this.vh();
     const S = Math.min(W, H);
@@ -672,15 +679,27 @@ export class Overlay {
   }
 
   _drawStick(p) {
-    const s = this.game.input.stick;
+    const inp = this.game.input;
+    const s = inp.stick;
+    const running = inp.run && inp.stickDriven;
     p.push();
     p.noFill();
-    p.stroke(255, 255, 255, 70);
-    p.strokeWeight(2);
+    // 推到跑的幅度就把外圈点亮，玩家得知道自己现在到底在走还是在跑
+    p.stroke(255, 255, 255, running ? 180 : 70);
+    p.strokeWeight(running ? 3.4 : 2);
     p.ellipse(s.ox, s.oy, 140);
     p.noStroke();
-    p.fill(255, 255, 255, 110);
-    p.ellipse(s.ox + s.x * 70, s.oy + s.y * 70, 52);
+    const kx = s.ox + s.x * 70, ky = s.oy + s.y * 70;
+    p.fill(255, 255, 255, running ? 190 : 110);
+    p.ellipse(kx, ky, running ? 60 : 52);
+    // 「跑」写在拨片里，跟着手指走，不会跟拨片撞在一起
+    if (running) {
+      p.fill(30, 28, 24, 220);
+      p.textFont(SANS);
+      p.textAlign(p.CENTER, p.CENTER);
+      p.textSize(Math.max(15, Math.min(this.vw(), this.vh()) * 0.042));
+      p.text('跑', kx, ky);
+    }
     p.pop();
   }
 

@@ -39,6 +39,8 @@ export class Game {
     this.overlay = new Overlay(uiContainer, this);
     // 输入的左右判定要跟界面用同一套尺寸，否则摇杆区和按钮区会对不上
     this.input.viewport = () => ({ w: this.overlay.vw(), h: this.overlay.vh() });
+    // 摇杆只在界面画出底座的那一块生效，别的地方留给转视角
+    this.input.stickZone = () => this.overlay.stickZone();
     // 浏览器要用户先动一下才准出声
     addEventListener('keydown', () => this.audio.unlock(), { once: true });
 
@@ -482,7 +484,17 @@ export class Game {
     // 直立走得慢一点——但只罚"本来该四足却站起来"的（牛来），
     // 豹拉和狗本来就是这个姿态，不该跟着挨罚
     const uprightPenalty = (this.player.stanceTarget > 0.5 && a.stance <= 0.5) ? 0.85 : 1;
-    const speed = (this.input.run ? a.run : a.walk) * uprightPenalty;
+    // 键盘是走或跑两档，摇杆是连续的：推一半走，推到底跑。
+    // 手机上没有 Shift，这是唯一能加速的办法，也就是唯一能过河的办法。
+    let base;
+    if (this.input.stickDriven) {
+      const m = this.input.mag;
+      base = m <= 0.6 ? a.walk * (m / 0.6)
+                      : THREE.MathUtils.lerp(a.walk, a.run, (m - 0.6) / 0.4);
+    } else {
+      base = this.input.run ? a.run : a.walk;
+    }
+    const speed = base * uprightPenalty;
     if (moving) {
       _d.normalize();
       this.player.velocity.lerp(_d.clone().multiplyScalar(speed), Math.min(1, dt * a.accel));
