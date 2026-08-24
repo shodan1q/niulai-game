@@ -598,7 +598,11 @@ export class Game {
       const river = this.scene.river;
       const nearRiver = river && Math.abs(p.z - river.center(p.x)) < river.blockHalf + 3.5;
       if (nearRiver && this.player.grounded) {
-        this.overlay.setHint('河太宽，走不过去 —— 退后助跑，Shift 加速，空格起跳');
+        // 提示要按当前用的是键盘还是手指来说。手机上没有 Shift 和空格，
+        // 照着念只会让人更懵。
+        this.overlay.setHint(this.input.touchMode
+          ? '河太宽，走不过去。退后，摇杆推到底跑起来，再按「跳」'
+          : '河太宽，走不过去。退后助跑，Shift 加速，空格起跳');
       } else if (exOpen) {
         const dEx = p.distanceTo(ex.position);
         this.overlay.setHint(dEx < 14 ? `${ex.label} →` : null);

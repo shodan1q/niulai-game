@@ -501,10 +501,21 @@ export class Overlay {
     p.textAlign(p.CENTER, p.CENTER);
     const fs = Math.max(this._narrow(p) ? 15 : 13, S * 0.023);
     p.textSize(fs);
-    // 换行自己拆——canvas 的 fillText 不认 \n
-    const lines = String(t.text).split('\n');
+    // 换行自己拆，canvas 的 fillText 不认 \n。
+    // 太长的还要按宽度折行，不然超出屏幕直接被切掉，中间那段字就没了。
+    const maxW = W * 0.88 - 44;
+    const lines = [];
+    for (const seg of String(t.text).split('\n')) {
+      if (p.textWidth(seg) <= maxW) { lines.push(seg); continue; }
+      let cur = '';
+      for (const ch of seg) {
+        if (p.textWidth(cur + ch) > maxW && cur) { lines.push(cur); cur = ch; }
+        else cur += ch;
+      }
+      if (cur) lines.push(cur);
+    }
     const lh = fs * 1.55;
-    const tw = Math.max(...lines.map((l) => p.textWidth(l))) + 44;
+    const tw = Math.min(W * 0.9, Math.max(...lines.map((l) => p.textWidth(l))) + 44);
     const bh = lines.length * lh + 16;
     const y = H * 0.16;
     p.noStroke();
