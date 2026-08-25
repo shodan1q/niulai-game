@@ -56,9 +56,16 @@ export class Audio {
     this._lastBlip = 0;
   }
 
-  // 浏览器要求先有用户手势才能出声
+  // 浏览器要求先有用户手势才能出声。
+  // iOS 的 WebView 还要额外两件事：resume() 第一次经常不生效，得每次手势都再试；
+  // 而且光 resume 不算数，必须在手势的调用栈里真的播出一个 buffer 才解锁。
+  // 少了这两条，手机上就是"什么都对，就是没声音"。
   unlock() {
-    if (this.ctx) { if (this.ctx.state === 'suspended') this.ctx.resume(); return; }
+    if (this.ctx) {
+      if (this.ctx.state !== 'running') this.ctx.resume?.().catch(() => {});
+      this._prime();
+      return;
+    }
     const AC = window.AudioContext || window.webkitAudioContext;
     if (!AC) return;
     const ctx = this.ctx = new AC();
@@ -79,8 +86,25 @@ export class Audio {
     this.water = bed(ctx, this.ambBus, { type: 'water' });
 
     this.ready = true;
+    if (ctx.state !== 'running') ctx.resume?.().catch(() => {});
+    this._prime();
     this.loadOverrides();
   }
+
+  // 播一个一帧的静音 buffer。iOS 认这个动作，不认单独的 resume()。
+  _prime() {
+    if (this._primed || !this.ctx) return;
+    try {
+      const src = this.ctx.createBufferSource();
+      src.buffer = this.ctx.createBuffer(1, 1, 22050);
+      src.connect(this.ctx.destination);
+      src.start(0);
+      if (this.ctx.state === 'running') this._primed = true;
+    } catch { /* 解锁失败就下次手势再来 */ }
+  }
+
+  // 声音到底通没通。界面拿它决定要不要提示"点一下开声音"。
+  get live() { return !!this.ctx && this.ctx.state === 'running' && !this.muted; }
 
   // 外部素材插槽：public/voice/manifest.json 里写 { "niulai": "niulai.mp3" }，
   // 有就用文件，没有就用合成。文件不存在时安静跳过，不报错。

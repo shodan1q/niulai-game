@@ -41,8 +41,16 @@ export class Game {
     this.input.viewport = () => ({ w: this.overlay.vw(), h: this.overlay.vh() });
     // 摇杆只在界面画出底座的那一块生效，别的地方留给转视角
     this.input.stickZone = () => this.overlay.stickZone();
-    // 浏览器要用户先动一下才准出声
-    addEventListener('keydown', () => this.audio.unlock(), { once: true });
+    // 浏览器要用户先动一下才准出声。原来只挂了 keydown，手机上没有键盘，
+    // 全靠画布那一条 pointerdown 兜底；一旦第一次没解开就再也没有第二次机会。
+    // 现在任何手势都试一次，而且不用 once——iOS 上第一次经常失败，得反复试。
+    for (const t of ['pointerdown', 'touchstart', 'touchend', 'keydown', 'click']) {
+      addEventListener(t, () => this.audio.unlock(), { passive: true });
+    }
+    // 切回前台时上下文常常还是 suspended，回来要再叫一次
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) this.audio.unlock();
+    });
 
     this.state = 'boot';
     this.flags = new Set();
@@ -373,6 +381,15 @@ export class Game {
         else if (hit === 'view') this.cycleView();
         else if (hit === 'time') this.nextPhase();
         else if (hit === 'shout') this.audio.shout(this.animal.voice, 0.9);
+        else if (hit === 'sound') {
+          // 没通就先解锁，通了再当开关用
+          this.audio.unlock();
+          if (!this.audio.ctx || this.audio.ctx.state !== 'running') {
+            this.overlay.showToast('正在开声音，再点一下');
+          } else {
+            this.overlay.showToast(this.audio.toggleMute() ? '声音：关' : '声音：开');
+          }
+        }
         return;
       }
     }

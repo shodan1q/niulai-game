@@ -225,18 +225,6 @@ export class Overlay {
     p.text('来', colX, topY + ts * 1.06);
     p.pop();
 
-    p.push();
-    p.textFont(SERIF);
-    p.textAlign(p.CENTER, p.CENTER);
-    p.fill(48, 46, 42, 185);
-    const ss = Math.max(13, S * 0.028);
-    p.textSize(ss);
-    const sub = '梦醒之前';
-    for (let i = 0; i < sub.length; i++) {
-      p.text(sub[i], colX - ts * 0.78, topY + ts * 0.35 + i * ss * 1.35);
-    }
-    p.pop();
-
     seal(p, colX - S * 0.036, topY + ts * 1.72, S * 0.072, '牛来');
 
     // 章节选择：五个可点的章名，横排在底部。
@@ -558,6 +546,8 @@ export class Overlay {
       mk('animal', 'swap', '换', top - gap),
       mk('view', 'eye', '视角', top - gap * 2),
       mk('time', 'sun', '时辰', top - gap * 3),
+      // 手机上原来既看不出声音开没开，也没法自己打开
+      mk('sound', 'sound', '声音', top - gap * 4),
     ];
   }
 
@@ -629,6 +619,23 @@ export class Overlay {
         p.noStroke(); p.fill(248, 245, 238, 240);
         p.circle(0, 0, s * 0.52);
         break;
+      case 'sound': {                               // 喇叭；没通的时候划一杠
+        const live = this.game?.audio?.live;
+        p.beginShape();
+        p.vertex(-s * 0.62, -s * 0.26); p.vertex(-s * 0.22, -s * 0.26);
+        p.vertex(s * 0.14, -s * 0.66); p.vertex(s * 0.14, s * 0.66);
+        p.vertex(-s * 0.22, s * 0.26); p.vertex(-s * 0.62, s * 0.26);
+        p.endShape(p.CLOSE);
+        if (live) {
+          p.noFill();
+          p.arc(s * 0.18, 0, s * 0.7, s * 0.7, -0.9, 0.9);
+          p.arc(s * 0.18, 0, s * 1.15, s * 1.15, -0.8, 0.8);
+        } else {
+          p.line(s * 0.30, -s * 0.42, s * 0.86, s * 0.42);
+          p.line(s * 0.86, -s * 0.42, s * 0.30, s * 0.42);
+        }
+        break;
+      }
       case 'sun':                                   // 半日半月
         p.circle(0, 0, s * 1.35);
         p.noStroke(); p.fill(248, 245, 238, 230);
