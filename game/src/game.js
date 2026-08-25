@@ -83,6 +83,7 @@ export class Game {
       model: a.model, name: a.name, height: a.height, tint: a.tint,
       girth: a.girth, stance: a.stance, gravity: a.gravity ?? 14,
     });
+    this.player.runSpeed = a.run;
     this.stage.eyeHeight = a.height * 0.86;
     this.ctx = {
       assets: this.assets,
@@ -206,6 +207,7 @@ export class Game {
       height: a.height, girth: a.girth, tint: a.tint, stance: a.stance,
     });
     this.player.gravity = a.gravity ?? 14;
+    this.player.runSpeed = a.run;
     this.player.flying = 0;
     // 换成不会飞的时候人还在半空：让它正常落下就行，但别留着 held 状态
     if (!a.fly) this.input.jumpHeld = false;

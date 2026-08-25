@@ -40,6 +40,61 @@ class BakedModel {
   }
 }
 
+// 蒙皮版。几何不能像静态模型那样把归一化矩阵烘进顶点——顶点在绑定姿势空间，
+// 烘了就跟骨头对不上。所以缩放和位移放在包裹节点上做。
+class BakedRigged {
+  constructor(geo, map, skin, proportions, fit) {
+    this.rigged = true;
+    this.geo = geo; this.map = map; this.skin = skin;
+    this.proportions = proportions;
+    this.fit = fit;                 // { s, dx, dy, dz }
+  }
+
+  makeMesh({ tint = 0xffffff, roughness = 1 } = {}) {
+    // 每个实例都要一副自己的骨头，不然所有牛会一起抽搐
+    const bones = this.skin.nodes.map((n) => {
+      const b = new THREE.Bone();
+      b.name = n.name;
+      b.position.set(n.t[0], n.t[1], n.t[2]);
+      b.quaternion.set(n.r[0], n.r[1], n.r[2], n.r[3]);
+      b.scale.set(n.s[0], n.s[1], n.s[2]);
+      return b;
+    });
+    this.skin.nodes.forEach((n, i) => n.c.forEach((k) => bones[i].add(bones[k])));
+
+    const inv = [];
+    for (let i = 0; i < bones.length; i++) {
+      inv.push(new THREE.Matrix4().fromArray(this.skin.ibm, i * 16));
+    }
+    const mesh = new THREE.SkinnedMesh(this.geo, new THREE.MeshStandardMaterial({
+      color: tint, map: this.map, roughness, metalness: 0,
+    }));
+    mesh.castShadow = true;
+    mesh.receiveShadow = false;
+    mesh.frustumCulled = false;      // 骨骼动起来会超出绑定姿势的包围盒
+
+    const root = new THREE.Group();
+    for (const k of this.skin.roots) root.add(bones[k]);
+    root.add(mesh);
+    mesh.bind(new THREE.Skeleton(bones, inv), new THREE.Matrix4());
+
+    const f = this.fit;
+    root.scale.setScalar(f.s);
+    root.position.set(f.dx, f.dy, f.dz);
+
+    const g = new THREE.Group();
+    g.add(root);
+    const rig = {};
+    for (const b of bones) {
+      const key = b.name.replace(/^mixamorig:?/, '').replace(/\s*Model$/, '');
+      rig[key] = b;
+      b.userData.rest = { x: b.rotation.x, y: b.rotation.y, z: b.rotation.z };
+    }
+    g.userData.rig = rig;
+    return g;
+  }
+}
+
 export class BakedAssets {
   constructor() {
     this.models = {};
@@ -75,6 +130,42 @@ export class BakedAssets {
         geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
       }
       geo.setIndex(new THREE.BufferAttribute(asTyped(b.idx, b.i32 ? Uint32Array : Uint16Array), 1));
+
+      if (b.skin) {
+        // 关节索引 u8、权重 u8，还原成 three 要的形状
+        const j = decode(b.skin.j);
+        const ji = new Uint16Array(j.length);
+        for (let k = 0; k < j.length; k++) ji[k] = j[k];
+        geo.setAttribute('skinIndex', new THREE.BufferAttribute(ji, 4));
+        const w = decode(b.skin.w);
+        const wf = new Float32Array(w.length);
+        for (let k = 0; k < w.length; k++) wf[k] = w[k] / 255;
+        geo.setAttribute('skinWeight', new THREE.BufferAttribute(wf, 4));
+        geo.computeVertexNormals();
+        geo.computeBoundingBox();
+        geo.computeBoundingSphere();
+
+        // 归一化只算出参数，不动顶点
+        const bb0 = geo.boundingBox;
+        const sz = new THREE.Vector3(); bb0.getSize(sz);
+        const ct = new THREE.Vector3(); bb0.getCenter(ct);
+        const sc = 1 / Math.max(sz.y, 1e-6);
+        this.models[b.id] = new BakedRigged(geo, null, {
+          ...b.skin, ibm: asTyped(b.skin.ibm, Float32Array),
+        }, { w: sz.x * sc, h: 1, d: sz.z * sc },
+          { s: sc, dx: -ct.x * sc, dy: -bb0.min.y * sc, dz: -ct.z * sc });
+
+        if (b.tex) {
+          const img = new Image();
+          img.src = `data:${b.tex.mime};base64,${b.tex.data}`;
+          const t = new THREE.Texture(img);
+          t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; t.flipY = false;
+          if (img.complete) t.needsUpdate = true; else img.onload = () => { t.needsUpdate = true; };
+          this.models[b.id].map = t;
+        }
+        onProgress?.((i + 1) / BAKED.length);
+        continue;
+      }
 
       if (b.rot) {
         if (b.rot[0]) geo.rotateX(b.rot[0]);

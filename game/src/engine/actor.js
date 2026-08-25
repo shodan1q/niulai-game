@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { Rig } from './rig.js';
 
 // 模型是静态的，一根骨头都没有。所有"动作"都是这里现算出来的：
 // 呼吸、行走的挤压拉伸、转弯侧倾、落地压扁、说话点头。
@@ -6,6 +7,18 @@ import * as THREE from 'three';
 // 这里把它做成一个玩家可以按 P 切换的开关。
 
 const _v = new THREE.Vector3();
+
+// 带骨骼的模型给回来的是一个 Group（里面是骨架 + SkinnedMesh），
+// 静态模型给回来的是 Mesh。两种都得能释放，所以统一遍历着来。
+function disposeMesh(obj) {
+  if (!obj) return;
+  obj.traverse?.((o) => {
+    if (!o.material) return;
+    if (Array.isArray(o.material)) o.material.forEach((m) => m.dispose());
+    else o.material.dispose();
+  });
+  if (!obj.traverse && obj.material) obj.material.dispose();
+}
 
 export class Actor {
   constructor(assets, opts = {}) {
@@ -32,6 +45,8 @@ export class Actor {
     this.assets = assets;
     this.model = model;
     this.mesh = assets.makeMesh(model, { tint, flat, roughness });
+    // 带骨骼的模型走关节动画，不参与整体挤压拉伸
+    this.rig = this.mesh.userData?.rig ? new Rig(this.mesh.userData.rig) : null;
     this.pivot = new THREE.Group();       // 承担形变，与朝向解耦
     this.pivot.add(this.mesh);
     this.group.add(this.pivot);
@@ -68,6 +83,14 @@ export class Actor {
   }
 
   _applyScale() {
+    // 带骨骼的是双足人形，压扁拉长那套体型变换会把它捏坏，跳过
+    if (this.rig) {
+      this.baseScale = new THREE.Vector3(this.girth, 1, 1).multiplyScalar(this.height);
+      this.basePitch = 0;
+      this.pivot.rotation.x = this.dynPitch || 0;
+      if (this.shadow) this.shadow.scale.setScalar(this.height * 0.62);
+      return;
+    }
     // 四足时压扁拉长，直立时抽高收窄
     const s = this.stance;
     const sy = THREE.MathUtils.lerp(0.78, 1.12, s);
@@ -89,9 +112,10 @@ export class Actor {
       flat = false, roughness = 1, stance = this.stanceTarget,
     } = opts;
     this.pivot.remove(this.mesh);
-    this.mesh.material.dispose();
+    disposeMesh(this.mesh);
     this.model = modelId;
     this.mesh = this.assets.makeMesh(modelId, { tint, flat, roughness });
+    this.rig = this.mesh.userData?.rig ? new Rig(this.mesh.userData.rig) : null;
     this.pivot.add(this.mesh);
     this.height = height;
     this.girth = girth;
@@ -177,14 +201,26 @@ export class Actor {
     const talkNod = this.talking > 0 ? Math.sin(this.gait * 5) * 0.03 : 0;
     const startle = this.emote * 0.18;
 
-    const sy = 1 - this.squash + walkSquash + breathe + talkNod + startle;
-    const sxz = 1 + this.squash * 0.55 - walkSquash * 0.5 - breathe * 0.5 - startle * 0.4;
+    // 有骨架的角色不做整体挤压拉伸：腿在走、身子在起伏，再叠一层整体形变
+    // 就成了橡皮人。只保留落地那一下的压缩，作为冲击反馈。
+    const rigged = !!this.rig;
+    const sy = rigged ? 1 - this.squash * 0.45
+                      : 1 - this.squash + walkSquash + breathe + talkNod + startle;
+    const sxz = rigged ? 1 + this.squash * 0.25
+                       : 1 + this.squash * 0.55 - walkSquash * 0.5 - breathe * 0.5 - startle * 0.4;
 
     this.pivot.scale.set(
       this.baseScale.x * sxz,
       this.baseScale.y * sy,
       this.baseScale.z * sxz,
     );
+
+    if (this.rig) {
+      this.rig.update(dt, speed, this.runSpeed || 8, {
+        grounded: this.grounded, vy: this.vy, yawRate: this.yawRate,
+        talking: this.talking, flying: this.flying || 0,
+      });
+    }
 
     // 俯仰：起跳的时候整个身子往前扑，到顶收一点，下落时微微仰头准备落地。
     // 跑起来也带一点前倾，这样起跳的前倾是接着跑姿来的，不会突然一顿。
@@ -195,13 +231,20 @@ export class Actor {
       wantPitch += (rise > 0 ? 0.36 : 0.13) * rise * (0.6 + 0.4 * speedK);
     }
     this.dynPitch += (wantPitch - this.dynPitch) * Math.min(1, dt * 14);
-    this.pivot.rotation.x = this.basePitch + this.dynPitch;
+    this.pivot.rotation.x = this.basePitch + (rigged ? this.dynPitch * 0.25 : this.dynPitch);
 
-    // 走路时上下颠 + 左右晃；转弯时向内侧倾
-    this.pivot.position.y = moving ? Math.abs(bob) * 0.045 * this.height : 0;
-    this.pivot.rotation.z = -THREE.MathUtils.clamp(this.yawRate * 0.09, -0.35, 0.35)
-      + (moving ? Math.sin(this.gait) * 0.035 : 0);
-    this.pivot.rotation.y = moving ? Math.sin(this.gait) * 0.05 : 0;
+    // 走路时上下颠 + 左右晃；转弯时向内侧倾。
+    // 这些骨架自己会做，别再从外面叠一遍。
+    if (rigged) {
+      this.pivot.position.y = 0;
+      this.pivot.rotation.z = 0;
+      this.pivot.rotation.y = 0;
+    } else {
+      this.pivot.position.y = moving ? Math.abs(bob) * 0.045 * this.height : 0;
+      this.pivot.rotation.z = -THREE.MathUtils.clamp(this.yawRate * 0.09, -0.35, 0.35)
+        + (moving ? Math.sin(this.gait) * 0.035 : 0);
+      this.pivot.rotation.y = moving ? Math.sin(this.gait) * 0.05 : 0;
+    }
 
     // 扑翼。模型一根骨头都没有，翅膀掰不动，
     // 只能靠整体的开合 + 上下颠 + 左右摇装出"在打翅膀"。
@@ -225,7 +268,7 @@ export class Actor {
   }
 
   dispose() {
-    this.mesh.material.dispose();
+    disposeMesh(this.mesh);
     this.shadow?.material.dispose();
     this.shadow?.geometry.dispose();
   }

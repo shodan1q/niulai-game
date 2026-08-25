@@ -6,7 +6,8 @@ const ui = document.getElementById('ui');
 const game = new Game(canvas, ui, new Assets());
 
 game.boot([
-  { id: 'niulai', url: '/niulai.glb' },   // Tripo 生成，带 UV + PBR 贴图
+  // 带 Mixamo 骨架的牛来。动作全是 engine/rig.js 现算的，模型本身没有动画。
+  { id: 'niulai', url: '/niulai-rig.glb' },
   // GooFstore 打印件，无 UV，顶点色；模型正面朝 +X，转 -90° 对齐到 +Z
   { id: 'baola', url: '/baola.glb', rot: [0, -Math.PI / 2, 0] },
   // 从 FBX 抽的，带 UV + 贴图；模型是竖着躺的（尾巴朝天），绕 X 放平

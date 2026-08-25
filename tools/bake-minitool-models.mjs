@@ -18,7 +18,8 @@ import sharp from 'sharp';
 // 小工具单包上限 10MB。之前砍到 0.68MB 是因为怕超，实测下来余量很大，
 // 所以把面数和贴图提回来——牛来是主角、看得最近，给得最足。
 const MODELS = [
-  { id: 'niulai', file: 'game/public/niulai.glb', tris: 46000, tex: 1024 },
+  // 带 Mixamo 骨架，蒙皮数据一起烘；动作由 engine/rig.js 现算
+  { id: 'niulai', file: 'game/public/niulai-rig.glb', tris: 12000, tex: 1024, skinned: true },
   { id: 'baola', file: 'game/public/baola.glb', tris: 30000, tex: 0, rot: [0, -Math.PI / 2, 0] },
   { id: 'dog', file: 'game/public/dog.glb', tris: 30000, tex: 1024, rot: [-Math.PI / 2, 0, 0] },
   { id: 'bird', file: 'game/public/bird.glb', tris: 14000, tex: 0, rot: [0, -Math.PI / 2, 0] },
@@ -39,8 +40,15 @@ for (const M of MODELS) {
     .flatMap((m) => m.listPrimitives())
     .reduce((n, p) => n + (p.getIndices()?.getCount() ?? 0) / 3, 0);
 
-  const steps = [dedup(), weld({ tolerance: 0.0001 }),
-    simplify({ simplifier: MeshoptSimplifier, ratio: M.tris / before, error: 0.004 }), prune()];
+  // 目标面数比源文件还高时不能调 simplify，meshopt 会直接断言失败
+  const ratio = Math.min(1, M.tris / before);
+  const steps = [dedup(), weld({ tolerance: 0.0001 })];
+  if (ratio < 0.999) {
+    // 蒙皮模型减面要锁边，否则关节处的权重会被抹掉，动起来撕裂
+    steps.push(simplify({ simplifier: MeshoptSimplifier, ratio, error: 0.004,
+                          lockBorder: !!M.skinned }));
+  }
+  steps.push(prune());
   if (M.tex) {
     steps.push(textureCompress({ encoder: sharp, targetFormat: 'webp', resize: [M.tex, M.tex], quality: 74 }));
   }
@@ -89,6 +97,43 @@ for (const M of MODELS) {
 
   const qidx = nVert <= 65535 ? new Uint16Array(idx) : new Uint32Array(idx);
 
+  // 蒙皮：关节索引 u8（骨头不超过 255 根）、权重 u8，外加整副骨架
+  let skin = null;
+  if (M.skinned) {
+    const jA = prim.getAttribute('JOINTS_0'), wA = prim.getAttribute('WEIGHTS_0');
+    const sk = doc.getRoot().listSkins()[0];
+    if (!jA || !wA || !sk) throw new Error(`${M.id} 说是蒙皮的，但没找到 JOINTS_0/WEIGHTS_0/skin`);
+    const j = jA.getArray(), w = wA.getArray();
+    const qj = new Uint8Array(j.length);
+    for (let i = 0; i < j.length; i++) qj[i] = j[i];
+    const qw = new Uint8Array(w.length);
+    // 权重归一后量化到 u8，四个一组，误差摊到最大的那个上，保证和为 255
+    for (let i = 0; i < w.length; i += 4) {
+      let sum = w[i] + w[i+1] + w[i+2] + w[i+3] || 1;
+      let acc = 0, big = 0, bigv = -1;
+      for (let k = 0; k < 4; k++) {
+        const v = Math.round((w[i+k] / sum) * 255);
+        qw[i+k] = v; acc += v;
+        if (w[i+k] > bigv) { bigv = w[i+k]; big = k; }
+      }
+      qw[i + big] = Math.max(0, Math.min(255, qw[i + big] + (255 - acc)));
+    }
+
+    const joints = sk.listJoints();
+    const index = new Map(joints.map((n, i) => [n, i]));
+    const ibm = sk.getInverseBindMatrices().getArray();
+    const nodes = joints.map((n) => {
+      const t = n.getTranslation(), r = n.getRotation(), c = n.getScale();
+      const kids = n.listChildren().filter((x) => index.has(x)).map((x) => index.get(x));
+      return { name: n.getName(), t: [t[0], t[1], t[2]], r: [r[0], r[1], r[2], r[3]],
+               s: [c[0], c[1], c[2]], c: kids };
+    });
+    // 谁没被别人认作孩子，谁就是根
+    const isChild = new Set(nodes.flatMap((n) => n.c));
+    const roots = nodes.map((_, i) => i).filter((i) => !isChild.has(i));
+    skin = { j: b64(qj), w: b64(qw), nodes, roots, ibm: b64(new Float32Array(ibm)) };
+  }
+
   // 贴图：直接取压好的 WebP 字节
   let tex = null;
   const tx = doc.getRoot().listTextures()[0];
@@ -109,15 +154,18 @@ for (const M of MODELS) {
     i32: qidx instanceof Uint32Array,
     rot: M.rot || null,
     tex,
+    skin,
   };
   out.push(entry);
 
   const bytes = qpos.byteLength + (quv?.byteLength ?? 0) + (qcol?.byteLength ?? 0)
-    + qidx.byteLength + (tex ? tex.data.length * 0.75 : 0);
+    + qidx.byteLength + (tex ? tex.data.length * 0.75 : 0)
+    + (skin ? skin.j.length * 0.75 + skin.w.length * 0.75 + skin.ibm.length * 0.75 : 0);
   raw += bytes;
   log(`${M.id}: ${Math.round(before / 1000)}k → ${Math.round(entry.tris / 1000)}k 面, `
     + `${nVert.toLocaleString()} 顶点, ${(bytes / 1024).toFixed(0)} KB`
-    + (tex ? ` (含 ${M.tex}px 贴图)` : ' (顶点色)'));
+    + (tex ? ` (含 ${M.tex}px 贴图)` : ' (顶点色)')
+    + (skin ? ` (蒙皮 ${skin.nodes.length} 骨)` : ''));
 }
 
 mkdirSync(dirname(OUT), { recursive: true });
