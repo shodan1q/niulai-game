@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { Npc } from '../engine/actor.js';
-import { makeGround, makeHills, makeGrass, makeTree, makeRock, Lark, makeCaoBlocks, BirdFlock } from '../engine/props.js';
+import { makeGround, makeHills, makeGrass, makeForest, makeRock, Lark, makeCaoBlocks, BirdFlock } from '../engine/props.js';
 import { scatter, makeExitGate, placeFeather, makeMotes, addRiver, addWildlife, tickWildlife } from './common.js';
 
 // 和第一章是同一条河，只是天亮了。
@@ -34,7 +34,7 @@ export const reunion = {
     });
     const inWater = (x, z) => river.inside(x, z, 0.8);
 
-    g.add(makeHills({ radius: 102, count: 15, color: 0x6f7c48, height: 12, seed: 19 }));
+    g.add(makeHills({ radius: 102, count: 15, color: 0x6f7c48, height: 12, seed: 19, rings: 3 }));
     const grass = makeGrass({ count: 4200, area: 58, color: 0x94af53, height: 0.48, seed: 47, inner: 1.5, reject: inWater });
     g.add(grass);
     // 弹幕长进草里了
@@ -42,8 +42,12 @@ export const reunion = {
     g.add(cao);
 
     const avoid = [[0, 16], [4, 2], [-8, 8]];
-    scatter(g, (i, r) => makeTree({ h: 4.5 + r() * 3, leaf: 0x568238, trunk: 0x63492a, seed: i + 13 }),
-      { count: 8, inner: 18, outer: 42, seed: 141, avoid, avoidR: 6, reject: inWater });
+    // 醒来这一章天亮了，树种跟草原一致，让人认得出是同一片地方
+    g.add(makeForest({
+      count: 15, inner: 15, outer: 42, seed: 47, avoid, avoidR: 6, reject: inWater,
+      kinds: { broadleaf: 4, pine: 2, shrub: 2, birch: 1 },
+      h: [4.5, 7.5], leaf: 0x568238, trunk: 0x63492a,
+    }));
     scatter(g, (i, r) => makeRock({ s: 0.4 + r() * 0.9, color: 0x94907e, seed: i + 17 }),
       { count: 9, inner: 10, outer: 38, seed: 151, avoid, avoidR: 4, reject: inWater });
 

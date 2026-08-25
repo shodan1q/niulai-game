@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { Npc } from '../engine/actor.js';
-import { makeGround, makeHills, makeGrass, makeTree, makeStump, makeRock, makeCaoBlocks, BirdFlock } from '../engine/props.js';
+import { makeGround, makeHills, makeGrass, makeForest, makeStump, makeRock, makeCaoBlocks, BirdFlock } from '../engine/props.js';
 import { scatter, makeExitGate, placeFeather, makeMotes, point, addRiver, addWildlife, tickWildlife } from './common.js';
 
 // 溪从林子中间穿过，把出生点和豹拉隔开
@@ -36,7 +36,7 @@ export const forest = {
     });
     const inWater = (x, z) => river.inside(x, z, 0.8);
 
-    g.add(makeHills({ radius: 88, count: 15, color: 0x4c5638, height: 15, seed: 12 }));
+    g.add(makeHills({ radius: 88, count: 15, color: 0x4c5638, height: 15, seed: 12, rings: 3 }));
     const grass = makeGrass({ count: 2200, area: 50, color: 0x7d8348, height: 0.42, seed: 27, inner: 2, reject: inWater });
     g.add(grass);
     // 弹幕长进草里了
@@ -50,10 +50,17 @@ export const forest = {
       { count: 34, inner: 6, outer: 40, seed: 51, avoid, avoidR: 4, reject: inWater });
 
     // 边缘还剩几棵活的，中间全是死的
-    scatter(g, (i, r) => makeTree({ h: 5 + r() * 4, leaf: 0x527a38, trunk: 0x5c4327, seed: i + 3 }),
-      { count: 10, inner: 32, outer: 44, seed: 61, reject: inWater });
-    scatter(g, (i, r) => makeTree({ h: 4 + r() * 3.5, trunk: 0x6d5638, seed: i + 7, dead: true }),
-      { count: 14, inner: 8, outer: 34, seed: 71, avoid, avoidR: 5, reject: inWater });
+    // 还活着的那些：针叶为主，混白桦和垂柳
+    g.add(makeForest({
+      count: 20, inner: 12, outer: 46, seed: 31, avoid, avoidR: 5, reject: inWater,
+      kinds: { pine: 4, birch: 3, willow: 2, broadleaf: 2 },
+      h: [5, 9], leaf: 0x527a38, trunk: 0x5c4327,
+    }));
+    // 被锯断之后剩下的枯木
+    g.add(makeForest({
+      count: 10, inner: 14, outer: 44, seed: 61, avoid, avoidR: 5, reject: inWater,
+      kinds: { dead: 1 }, h: [4, 7.5], trunk: 0x6d5638,
+    }));
 
     // 几根倒在地上的原木
     scatter(g, (i, r) => {

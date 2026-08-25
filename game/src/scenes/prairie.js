@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { Npc } from '../engine/actor.js';
-import { makeGround, makeHills, makeGrass, makeTree, makeRock, Lark, Wolf, makeCaoBlocks, BirdFlock } from '../engine/props.js';
+import { makeGround, makeHills, makeGrass, makeForest, makeRock, Lark, Wolf, makeCaoBlocks, BirdFlock } from '../engine/props.js';
 import { scatter, makeExitGate, placeFeather, makeMotes, addRiver, addWildlife, tickWildlife } from './common.js';
 
 // 河横在南边，不挡故事——羽毛在对岸，想拿就得先学会助跑起跳。
@@ -36,7 +36,7 @@ export const prairie = {
     });
     const inWater = (x, z) => river.inside(x, z, 0.8);
 
-    g.add(makeHills({ radius: 100, count: 16, color: 0x6b7040, height: 13, seed: 3 }));
+    g.add(makeHills({ radius: 100, count: 16, color: 0x6b7040, height: 13, seed: 3, rings: 3 }));
     const grass = makeGrass({ count: 4200, area: 60, color: 0x87a349, height: 0.5, seed: 11, inner: 1.5, reject: inWater });
     g.add(grass);
     // 弹幕长进草里了
@@ -44,8 +44,12 @@ export const prairie = {
     g.add(cao);
 
     const avoid = [[0, 10], [-9, 2], [8, -4], [3, 18]];
-    scatter(g, (i, r) => makeTree({ h: 4 + r() * 3, leaf: 0x4a7a34, trunk: 0x63492a, seed: i + 1 }),
-      { count: 9, inner: 16, outer: 42, seed: 21, avoid, avoidR: 6, reject: inWater });
+    // 温带草甸：阔叶为主，夹几棵松和灌木
+    g.add(makeForest({
+      count: 16, inner: 16, outer: 44, seed: 21, avoid, avoidR: 6, reject: inWater,
+      kinds: { broadleaf: 4, pine: 2, shrub: 2, birch: 1 },
+      h: [4, 7.5], leaf: 0x4a7a34, trunk: 0x63492a,
+    }));
     scatter(g, (i, r) => makeRock({ s: 0.5 + r() * 1.1, color: 0x8f8a76, seed: i + 5 }),
       { count: 12, inner: 8, outer: 40, seed: 33, avoid, avoidR: 4, reject: inWater });
 

@@ -39,7 +39,7 @@ export const deep = {
       bedColor: 0x6b6048, waterColor: 0x357c88, seed: 13,
     });
     g.add(river.group);
-    g.add(makeHills({ radius: 84, count: 14, color: 0x27383a, height: 17, seed: 8 }));
+    g.add(makeHills({ radius: 84, count: 14, color: 0x27383a, height: 17, seed: 8, rings: 3 }));
 
     const inWater = (x, z) => river.inside(x, z, 0.8);
 

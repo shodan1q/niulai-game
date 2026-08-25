@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { SANS } from '../ui/fonts.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 // 场景里除了主角，全部是程序化拼出来的低多边形。
 // 面数刻意压得很低、棱角刻意留着——原片被吐槽"4399 小游戏画质"，
@@ -40,32 +41,103 @@ export function makeGround({ size = 240, seg = 48, colorA = 0x6f8a3f, colorB = 0
 
 // 远处的山，纯装饰，走不过去。
 // 用扁球而不是圆锥——圆锥在低多边形下会变成埃及金字塔。
-export function makeHills({ radius = 105, count = 22, color = 0x4a5f38, height = 22, seed = 3, rings = 2 } = {}) {
+// 远山。四种形状混着摆，高的还带雪顶。
+//
+// 原来只有一种压扁的球，两圈一摆，远看是一排一模一样的馒头。
+// 现在按类型给不同轮廓，颜色烘在顶点上，每一圈合并成一个 Mesh
+// （原来 22×2 座山就是四十多次 draw call，山又是一动不动的）。
+export function makeHills({
+  radius = 105, count = 22, color = 0x4a5f38, height = 22, seed = 3, rings = 2,
+  snow = 0.0,                 // 超过这个高度比例的山尖染上雪色；0 表示不下雪
+  snowColor = 0xe8eef2,
+} = {}) {
   const r = rng(seed);
   const group = new THREE.Group();
-  const near = new THREE.MeshLambertMaterial({ color, flatShading: true });
-  const far = new THREE.MeshLambertMaterial({
-    color: new THREE.Color(color).lerp(new THREE.Color(0xffffff), 0.22), flatShading: true,
-  });
 
   for (let ring = 0; ring < rings; ring++) {
+    // 越远越淡，做出空气透视
+    const tone = new THREE.Color(color).lerp(new THREE.Color(0xffffff), ring * 0.22);
+    const parts = [];
     const n = Math.round(count * (1 + ring * 0.5));
     for (let i = 0; i < n; i++) {
       const ang = (i / n) * Math.PI * 2 + (r() - 0.5) * 0.5;
       const h = height * (0.5 + r() * 0.8) * (1 + ring * 0.45);
       const rad = h * (1.1 + r() * 0.9);
-      const geo = new THREE.SphereGeometry(1, 7 + Math.floor(r() * 3), 4);
-      geo.scale(rad, h, rad * (0.7 + r() * 0.6));
-      // 削掉下半球，只留山形
-      const pos = geo.attributes.position;
-      for (let v = 0; v < pos.count; v++) if (pos.getY(v) < 0) pos.setY(v, pos.getY(v) * 0.06);
-      geo.computeVertexNormals();
-      const m = new THREE.Mesh(geo, ring ? far : near);
+      const kind = r();
+      let geo;
+
+      if (kind < 0.34) {
+        // 圆丘：原来那种，压扁的球削掉下半
+        geo = new THREE.SphereGeometry(1, 7 + Math.floor(r() * 3), 4);
+        geo.scale(rad, h, rad * (0.7 + r() * 0.6));
+        const p = geo.attributes.position;
+        for (let v = 0; v < p.count; v++) if (p.getY(v) < 0) p.setY(v, p.getY(v) * 0.06);
+      } else if (kind < 0.62) {
+        // 尖峰：锥体，侧面顶点随机推拉一点，避免棱太规整
+        geo = new THREE.ConeGeometry(rad * 0.85, h * 1.35, 5 + Math.floor(r() * 3), 2);
+        const p = geo.attributes.position;
+        for (let v = 0; v < p.count; v++) {
+          const y = p.getY(v);
+          if (y > -h * 0.6) {
+            const k = 1 + (r() - 0.5) * 0.28;
+            p.setX(v, p.getX(v) * k); p.setZ(v, p.getZ(v) * k);
+          }
+        }
+        geo.translate(0, h * 0.6, 0);
+      } else if (kind < 0.82) {
+        // 平顶台地：上窄下宽的柱体，顶上是平的
+        geo = new THREE.CylinderGeometry(rad * (0.35 + r() * 0.2), rad, h * 0.9,
+          5 + Math.floor(r() * 3), 1);
+        const p = geo.attributes.position;
+        for (let v = 0; v < p.count; v++) {
+          const k = 1 + (r() - 0.5) * 0.16;
+          p.setX(v, p.getX(v) * k); p.setZ(v, p.getZ(v) * k);
+        }
+        geo.translate(0, h * 0.45, 0);
+      } else {
+        // 连绵的岭：三个高低不一的丘挨着排成一线
+        const bits = [];
+        for (let b = 0; b < 3; b++) {
+          const bh = h * (0.55 + r() * 0.5);
+          const br = bh * (1.0 + r() * 0.7);
+          let gg = new THREE.SphereGeometry(1, 6, 3);
+          gg.scale(br, bh, br * 0.8);
+          const p = gg.attributes.position;
+          for (let v = 0; v < p.count; v++) if (p.getY(v) < 0) p.setY(v, p.getY(v) * 0.06);
+          gg.translate((b - 1) * br * 1.25, 0, (r() - 0.5) * br * 0.4);
+          bits.push(bare(gg));
+        }
+        geo = mergeGeometries(bits);
+        bits.forEach((b) => b.dispose());
+      }
+
+      geo = bare(geo);
+      geo.rotateY(r() * Math.PI);
       const dist = radius * (1.05 + r() * 0.35) * (1 + ring * 0.5);
-      m.position.set(Math.cos(ang) * dist, -h * 0.06, Math.sin(ang) * dist);
-      m.rotation.y = r() * Math.PI;
-      group.add(m);
+      geo.translate(Math.cos(ang) * dist, -h * 0.06, Math.sin(ang) * dist);
+
+      // 顶点色：山尖过了雪线就染白，过渡带做柔一点
+      const p = geo.attributes.position;
+      const cols = new Float32Array(p.count * 3);
+      const line = snow > 0 ? height * rings * snow : Infinity;
+      const c = new THREE.Color();
+      for (let v = 0; v < p.count; v++) {
+        const y = p.getY(v);
+        const t = line === Infinity ? 0
+          : THREE.MathUtils.clamp((y - line) / Math.max(height * 0.25, 1e-3), 0, 1);
+        c.copy(tone).lerp(new THREE.Color(snowColor), t);
+        cols[v * 3] = c.r; cols[v * 3 + 1] = c.g; cols[v * 3 + 2] = c.b;
+      }
+      geo.setAttribute('color', new THREE.BufferAttribute(cols, 3));
+      parts.push(geo);
     }
+
+    const merged = mergeGeometries(parts);
+    parts.forEach((p) => p.dispose());
+    merged.computeVertexNormals();
+    group.add(new THREE.Mesh(merged, new THREE.MeshLambertMaterial({
+      vertexColors: true, flatShading: true,
+    })));
   }
   return group;
 }
@@ -461,43 +533,193 @@ export function makeRiver({
 }
 
 // ---------------------------------------------------------------- 树木石头
-export function makeTree({ h = 5, trunk = 0x5a4326, leaf = 0x3f6b30, seed = 1, dead = false } = {}) {
-  const r = rng(seed);
-  const g = new THREE.Group();
-  const th = h * (dead ? 0.75 : 0.45);
-  const t = new THREE.Mesh(
-    new THREE.CylinderGeometry(h * 0.045, h * 0.09, th, 5),
-    new THREE.MeshLambertMaterial({ color: trunk, flatShading: true }),
-  );
-  t.position.y = th / 2;
-  t.castShadow = true;
-  g.add(t);
+// ---------------------------------------------------------------- 树
+//
+// 原来每棵树是一个 Group 装 3~5 个 Mesh，散三十棵就是上百次 draw call，
+// 而树完全静止，没有理由各占一次。现在每棵树先在本地把各部件变换好、
+// 烘上顶点色，再把整片林子合并成一个几何——一片林子一次 draw call。
+//
+// 顺带把树种从"松 + 枯木"扩到六种。原来满场一个形状，远看像复制粘贴。
 
-  if (dead) {
-    // 光秃秃的枝杈
-    const bm = new THREE.MeshLambertMaterial({ color: trunk, flatShading: true });
+const TREE_KINDS = ['pine', 'broadleaf', 'willow', 'birch', 'shrub', 'dead'];
+
+// 顺着明暗调一档，做出同一棵树上深浅不一的叶片
+function shade(hex, d) {
+  return new THREE.Color(hex).lerp(new THREE.Color(d > 0 ? 0xffffff : 0x000000), Math.abs(d)).getHex();
+}
+
+// 归一成"只有 position 的非索引几何"。
+// mergeGeometries 要求各块的属性集和索引状态完全一致，而 three 的图元里
+// 二十面体是非索引的、锥体柱体是索引的，直接混合会返回 null。
+function bare(geo) {
+  const g = geo.index ? geo.toNonIndexed() : geo;
+  if (g !== geo) geo.dispose();
+  g.deleteAttribute('uv');
+  g.deleteAttribute('normal');
+  return g;
+}
+
+// 把一块几何烘上顶点色、按矩阵摆好，追加到累积列表
+function stamp(out, geo, color, m) {
+  const g = bare(geo);
+  g.applyMatrix4(m);
+  const n = g.attributes.position.count;
+  const c = new Float32Array(n * 3);
+  const col = new THREE.Color(color);
+  for (let i = 0; i < n; i++) { c[i * 3] = col.r; c[i * 3 + 1] = col.g; c[i * 3 + 2] = col.b; }
+  g.setAttribute('color', new THREE.BufferAttribute(c, 3));
+  out.push(g);
+}
+
+function place(px, py, pz, rx, ry, rz, sx = 1, sy = 1, sz = 1) {
+  return new THREE.Matrix4().compose(
+    new THREE.Vector3(px, py, pz),
+    new THREE.Quaternion().setFromEuler(new THREE.Euler(rx, ry, rz)),
+    new THREE.Vector3(sx, sy, sz));
+}
+
+// 造一棵树的零件，追加进 out
+function buildTree(out, kind, { h = 5, trunk = 0x5a4326, leaf = 0x3f6b30, seed = 1,
+  x = 0, z = 0, yaw = 0 } = {}) {
+  const r = rng(seed);
+  const base = place(x, 0, z, 0, yaw, 0);
+  const at = (...a) => base.clone().multiply(place(...a));
+
+  if (kind === 'shrub') {
+    // 灌木：没有主干，几个矮球挤在一起
+    const n = 3 + Math.floor(r() * 3);
+    for (let i = 0; i < n; i++) {
+      const rr = h * (0.26 + r() * 0.20);
+      stamp(out, new THREE.IcosahedronGeometry(rr, 0), i % 2 ? leaf : shade(leaf, -0.08),
+        at((r() - 0.5) * h * 0.5, rr * 0.72, (r() - 0.5) * h * 0.5, 0, r() * 3, 0, 1, 0.75, 1));
+    }
+    return;
+  }
+
+  const slim = kind === 'birch';
+  const th = h * (kind === 'dead' ? 0.75 : slim ? 0.62 : 0.45);
+  const tw = h * (slim ? 0.028 : 0.045);
+  stamp(out, new THREE.CylinderGeometry(tw, tw * 2, th, slim ? 6 : 5),
+    slim ? 0xd8d3c4 : trunk, at(0, th / 2, 0, 0, 0, 0));
+
+  if (kind === 'dead') {
     for (let i = 0; i < 3 + Math.floor(r() * 3); i++) {
       const bl = h * (0.2 + r() * 0.25);
-      const b = new THREE.Mesh(new THREE.CylinderGeometry(h * 0.012, h * 0.03, bl, 4), bm);
-      b.position.y = th * (0.5 + r() * 0.45);
-      b.rotation.z = (r() - 0.5) * 1.6;
-      b.rotation.y = r() * Math.PI * 2;
-      b.translateY(bl / 2);
-      g.add(b);
+      // 枝杈斜着长出来：先在树干上定高、转向，再沿自身轴推半根长度
+      const m = at(0, th * (0.5 + r() * 0.45), 0, 0, r() * Math.PI * 2, (r() - 0.5) * 1.6)
+        .multiply(place(0, bl / 2, 0, 0, 0, 0));
+      stamp(out, new THREE.CylinderGeometry(h * 0.012, h * 0.03, bl, 4), trunk, m);
     }
-  } else {
-    const lm = new THREE.MeshLambertMaterial({ color: leaf, flatShading: true });
-    const layers = 2 + Math.floor(r() * 2);
+    return;
+  }
+
+  if (kind === 'pine') {
+    const layers = 3 + Math.floor(r() * 2);
     for (let i = 0; i < layers; i++) {
       const k = 1 - i / (layers + 0.6);
-      const c = new THREE.Mesh(new THREE.ConeGeometry(h * 0.42 * k, h * 0.42, 5 + Math.floor(r() * 2)), lm);
-      c.position.y = th + h * 0.16 * i + h * 0.14;
-      c.rotation.y = r() * Math.PI;
-      c.castShadow = true;
-      g.add(c);
+      stamp(out, new THREE.ConeGeometry(h * 0.42 * k, h * 0.42, 5 + Math.floor(r() * 2)),
+        i % 2 ? leaf : shade(leaf, 0.06),
+        at(0, th + h * 0.16 * i + h * 0.14, 0, 0, r() * 3, 0));
     }
+    return;
   }
-  return g;
+
+  if (kind === 'birch') {
+    // 白桦：细高，树冠小而靠上
+    const n = 2 + Math.floor(r() * 2);
+    for (let i = 0; i < n; i++) {
+      const rr = h * (0.16 + r() * 0.10);
+      stamp(out, new THREE.IcosahedronGeometry(rr, 0), i % 2 ? leaf : shade(leaf, 0.10),
+        at((r() - 0.5) * h * 0.18, th + rr * (0.6 + i * 0.7), (r() - 0.5) * h * 0.18,
+          0, r() * 3, 0, 1, 1.25, 1));
+    }
+    return;
+  }
+
+  if (kind === 'willow') {
+    // 垂柳：扁树冠，底下垂一圈
+    const rr = h * 0.40;
+    stamp(out, new THREE.IcosahedronGeometry(rr, 0), leaf,
+      at(0, th + rr * 0.45, 0, 0, r() * 3, 0, 1.15, 0.62, 1.15));
+    const n = 4 + Math.floor(r() * 3);
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2 + r() * 0.4;
+      const dl = h * (0.28 + r() * 0.26);
+      stamp(out, new THREE.ConeGeometry(h * 0.055, dl, 4), shade(leaf, -0.05),
+        at(Math.cos(a) * rr * 0.82, th + rr * 0.2 - dl * 0.42, Math.sin(a) * rr * 0.82, 0, 0, 0));
+    }
+    return;
+  }
+
+  // broadleaf：几个球堆成团状树冠
+  const n = 3 + Math.floor(r() * 2);
+  for (let i = 0; i < n; i++) {
+    const rr = h * (0.24 + r() * 0.16);
+    stamp(out, new THREE.IcosahedronGeometry(rr, 0), i % 2 ? leaf : shade(leaf, -0.07),
+      at((r() - 0.5) * h * 0.30, th + rr * 0.55 + r() * h * 0.16, (r() - 0.5) * h * 0.30,
+        0, r() * 3, 0, 1.1, 0.9, 1.1));
+  }
+}
+
+function mergeParts(parts) {
+  const geo = mergeGeometries(parts);
+  if (!geo) throw new Error('几何合并失败：各块的属性集或索引状态不一致');
+  parts.forEach((p) => p.dispose());
+  geo.computeVertexNormals();
+  const m = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({
+    vertexColors: true, flatShading: true,
+  }));
+  m.castShadow = true;
+  m.receiveShadow = false;
+  return m;
+}
+
+/**
+ * 一整片林子，合并成一个 Mesh。
+ * kinds 是树种和权重，比如 { pine: 3, broadleaf: 2, dead: 1 }
+ */
+export function makeForest({
+  count = 12, inner = 14, outer = 44, seed = 1, kinds = { pine: 1 },
+  h = [4, 7], trunk = 0x5a4326, leaf = 0x3f6b30,
+  avoid = [], avoidR = 6, reject = null, gap = 3.2,
+} = {}) {
+  const r = rng(seed);
+  const pool = [];
+  for (const [k, w] of Object.entries(kinds)) {
+    if (TREE_KINDS.includes(k)) for (let i = 0; i < w; i++) pool.push(k);
+  }
+  if (!pool.length) pool.push('pine');
+
+  const parts = [], spots = [];
+  for (let i = 0; i < count; i++) {
+    let x, z, ok = false, tries = 0;
+    while (!ok && tries++ < 24) {
+      const a = r() * Math.PI * 2;
+      const d = inner + r() * (outer - inner);
+      x = Math.cos(a) * d; z = Math.sin(a) * d;
+      ok = avoid.every((p) => Math.hypot(p[0] - x, p[1] - z) > avoidR)
+        && spots.every((p) => Math.hypot(p[0] - x, p[1] - z) > gap)
+        && !(reject && reject(x, z));
+    }
+    if (!ok) continue;
+    spots.push([x, z]);
+    buildTree(parts, pool[Math.floor(r() * pool.length)], {
+      h: h[0] + r() * (h[1] - h[0]), trunk, leaf,
+      seed: seed * 31 + i * 7 + 1, x, z, yaw: r() * Math.PI * 2,
+    });
+  }
+  if (!parts.length) return new THREE.Group();
+  const m = mergeParts(parts);
+  m.userData.spots = spots;
+  return m;
+}
+
+// 单棵的接口留着：剧情里偶尔要在指定位置摆一棵
+export function makeTree({ h = 5, trunk = 0x5a4326, leaf = 0x3f6b30, seed = 1,
+  dead = false, kind = null } = {}) {
+  const parts = [];
+  buildTree(parts, kind || (dead ? 'dead' : 'pine'), { h, trunk, leaf, seed });
+  return parts.length ? mergeParts(parts) : new THREE.Group();
 }
 
 export function makeStump({ r: rad = 0.7, h = 0.8, color = 0x6b5334, ring = 0xa98b5e } = {}) {

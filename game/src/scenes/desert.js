@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { Npc } from '../engine/actor.js';
-import { makeGround, makeHills, makeDune, makeRock, makeBones, makeTree, Wolf, BirdFlock } from '../engine/props.js';
+import { makeGround, makeHills, makeDune, makeRock, makeBones, makeForest, Wolf, BirdFlock } from '../engine/props.js';
 import { scatter, makeExitGate, placeFeather, makeMotes, point, addRiver, addWildlife, tickWildlife } from './common.js';
 
 // 这条是快干了的河：河床很宽，水只剩中间细细一道。
@@ -36,7 +36,9 @@ export const desert = {
     });
     const inWater = (x, z) => river.inside(x, z, 1.2);
 
-    g.add(makeHills({ radius: 96, count: 13, color: 0x36415c, height: 20, seed: 15 }));
+    // 荒漠尽头是冷蓝的高山，山尖挂雪
+    g.add(makeHills({ radius: 96, count: 13, color: 0x36415c, height: 20, seed: 15,
+      rings: 3, snow: 0.52, snowColor: 0xb9c6d8 }));
 
     scatter(g, (i, r) => makeDune({ w: 14 + r() * 22, h: 2 + r() * 4, color: 0x9c8a66, seed: i + 3 }),
       { count: 14, inner: 14, outer: 46, seed: 101, avoid: [[0, 30], [0, -18]], avoidR: 9, reject: inWater });
@@ -44,8 +46,12 @@ export const desert = {
       { count: 12, inner: 10, outer: 42, seed: 111, reject: inWater });
     scatter(g, (i, r) => makeBones({ seed: i + 1, color: 0xe2dbc8 }),
       { count: 5, inner: 12, outer: 38, seed: 121, reject: inWater });
-    scatter(g, (i, r) => makeTree({ h: 3 + r() * 2.5, trunk: 0x6d5844, seed: i + 5, dead: true }),
-      { count: 7, inner: 16, outer: 42, seed: 131, reject: inWater });
+    // 荒漠只剩枯木和几丛耐旱的灌木
+    g.add(makeForest({
+      count: 12, inner: 16, outer: 44, seed: 131, reject: inWater,
+      kinds: { dead: 5, shrub: 2 }, h: [3, 5.5],
+      trunk: 0x6d5844, leaf: 0x5b5a3c,
+    }));
 
     // 夜里被风卷起来的沙
     const motes = makeMotes({ count: 300, area: 48, height: 8, color: 0xc8c0a0, size: 0.09, opacity: 0.35, seed: 14 });
