@@ -369,6 +369,25 @@ export class Game {
     }
     // 触屏按钮要在摇杆/转视角之前判，否则按它们会顺带把镜头拖歪
     if (this.state === 'play' && !this.busy) {
+      // 右侧动作键先判，它压在摇杆区上方
+      const act = this.overlay.actionButtonAt(x, y);
+      if (act) {
+        this._btnPointer.set(id ?? 'mouse', act);
+        if (act === 'talk') {
+          // 跟按 E 一样：有人就说话，没人就推进对话
+          if (this.runner.active) this.runner.advance();
+          else this.input.confirmPressed = true;
+        } else if (act === 'pose') {
+          const st = this.player.stanceTarget > 0.5 ? 0.1 : 1;
+          this.player.setStance(st);
+          this.overlay.showToast(st > 0.5 ? '站起来了' : '四条腿，踏实多了');
+        } else if (act === 'land') {
+          // 主动落地：停止扑翼并往下压一把
+          this.input.jumpHeld = false;
+          if (!this.player.grounded) this.player.vy = Math.min(this.player.vy, -6);
+        }
+        return;
+      }
       const hit = this.overlay.touchButtonAt(x, y);
       if (hit) {
         // 这根手指归按钮管，抬手之前不要交给摇杆/转视角

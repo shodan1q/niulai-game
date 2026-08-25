@@ -290,6 +290,7 @@ export class Overlay {
       this._drawStickBase(p);
       if (this.game.input.stick.active) this._drawStick(p);
       this._drawTouchUI(p);
+      this._drawActionUI(p);
     }
 
     // 梦境里让水墨渗回来一点：屏幕四角压一层墨色
@@ -328,19 +329,40 @@ export class Overlay {
     p.pop();
   }
 
+  // 按宽度折行。写死单行的话，手机上稍长一句就两头出屏，中间那截字直接没了。
+  _wrap(p, text, maxW) {
+    const out = [];
+    for (const seg of String(text).split('\n')) {
+      if (p.textWidth(seg) <= maxW) { out.push(seg); continue; }
+      let cur = '';
+      for (const ch of seg) {
+        if (p.textWidth(cur + ch) > maxW && cur) { out.push(cur); cur = ch; }
+        else cur += ch;
+      }
+      if (cur) out.push(cur);
+    }
+    return out;
+  }
+
   _drawHint(p, W, H) {
     const S = this._S(p);
     p.push();
     p.textFont(SANS);
     p.textAlign(p.CENTER, p.CENTER);
-    p.textSize(Math.max(12, S * 0.02));
-    const tw = p.textWidth(this.hint) + 34;
-    const y = H * 0.86;
+    const fs = Math.max(12, S * 0.02);
+    p.textSize(fs);
+    const lines = this._wrap(p, this.hint, W * 0.86 - 34);
+    const lh = fs * 1.5;
+    const tw = Math.min(W * 0.92, Math.max(...lines.map((l) => p.textWidth(l))) + 34);
+    const bh = lines.length * lh + 14;
+    // 手机上按键占了下面一大块，提示压在 0.86 会跟「跳」和右侧动作键叠在一起，
+    // 所以窄屏抬到按键区上方去。
+    const y = this._narrow(p) ? H * 0.56 : H * 0.86;
     p.noStroke();
     p.fill(16, 15, 13, 165);
-    p.rect(W / 2 - tw / 2, y - 17, tw, 34, 17);
+    p.rect(W / 2 - tw / 2, y - bh / 2, tw, bh, Math.min(17, bh / 2));
     p.fill(238, 232, 216, 235);
-    p.text(this.hint, W / 2, y);
+    lines.forEach((l, i) => p.text(l, W / 2, y - bh / 2 + 7 + lh * (i + 0.5)));
     p.pop();
   }
 
@@ -447,22 +469,38 @@ export class Overlay {
     const S = this._S(p);
     p.push();
     p.textFont(SANS);
-    p.textAlign(p.RIGHT, p.CENTER);
     p.textSize(Math.max(this._narrow(p) ? 14 : 11, S * 0.019));
     const y = Math.max(24, S * 0.045);
+    const m = Math.max(18, S * 0.03);
+    const g = this.game;
+
+    // 先量出左右两段真实宽度，再决定中间还放不放得下羽毛点。
+    // 原来右侧点位是写死的 96px 偏移，字一大就压到字上，窄屏还会跟左边的时辰撞。
+    const rightTxt = `羽毛 ${this.feathers} / ${this.featherTotal}`;
+    const rightW = p.textWidth(rightTxt);
+    const dotR = Math.max(5, S * 0.008);
+    const leftTxt = g.timeNow ? `${g.timeNow.phase.name}　${g.clock.clockText()}` : '';
+    const leftW = leftTxt ? dotR * 2.8 + p.textWidth(leftTxt) : 0;
+
+    p.textAlign(p.RIGHT, p.CENTER);
     p.fill(255, 255, 255, 200);
-    p.text(`羽毛 ${this.feathers} / ${this.featherTotal}`, W - Math.max(18, S * 0.03), y);
+    p.text(rightTxt, W - m, y);
+
     p.noStroke();
-    for (let i = 0; i < this.featherTotal; i++) {
-      const fx = W - Math.max(18, S * 0.03) - 96 - i * 15;
-      p.fill(255, 255, 255, i < this.feathers ? 235 : 60);
-      p.ellipse(fx, y, 6, 13);
+    const pipGap = Math.max(11, S * 0.017);
+    const pipsW = this.featherTotal * pipGap;
+    const free = (W - m - rightW - 12) - (m + leftW + 12);
+    if (free > pipsW) {
+      const x0 = W - m - rightW - 12 - pipsW;
+      for (let i = 0; i < this.featherTotal; i++) {
+        p.fill(255, 255, 255, i < this.feathers ? 235 : 60);
+        p.ellipse(x0 + i * pipGap, y, dotR * 0.8, dotR * 1.7);
+      }
     }
 
     // 时辰：左上角一个跟着天色转的小圆点 + 时间
-    const g = this.game;
     if (g.timeNow) {
-      const x = Math.max(18, S * 0.03), r = Math.max(5, S * 0.008);
+      const x = m, r = dotR;
       const c = g.timeNow.phase;
       p.noStroke();
       // 白天画太阳、夜里画月牙
@@ -475,7 +513,7 @@ export class Overlay {
       }
       p.fill(255, 255, 255, 190);
       p.textAlign(p.LEFT, p.CENTER);
-      p.text(`${c.name}　${g.clock.clockText()}`, x + r * 2.8, y);
+      p.text(leftTxt, x + r * 2.8, y);
     }
     p.pop();
   }
@@ -551,11 +589,45 @@ export class Overlay {
     ];
   }
 
+  // 右侧动作键。摇杆在右下，这几个摞在它正上方，拇指抬一点就够得着。
+  // 交谈原来只能"点屏幕任意处"，跟转视角抢手势；姿态切换手机上则完全没有入口。
+  actionButtons() {
+    const W = this.vw(), H = this.vh();
+    const S = Math.min(W, H);
+    const narrow = W < 620;
+    const r = Math.max(narrow ? 24 : 21, S * 0.052);
+    const cs = Math.max(narrow ? 14 : 11, S * (narrow ? 0.037 : 0.024));
+    const h = this.stickHome();
+    const cx = h.x;
+    const gap = r * 2 + cs * 1.8;
+    const top = h.y - h.r - r - cs * 2.0;
+    const list = [
+      { id: 'talk', icon: 'talk', cap: '说', x: cx, y: top, r, cs },
+      { id: 'pose', icon: 'pose', cap: '站', x: cx, y: top - gap, r, cs },
+    ];
+    // 会飞的多给一个"降落"，飞高了想下来不用等它自己掉
+    if (this.game?.animal?.fly) {
+      list.push({ id: 'land', icon: 'land', cap: '降', x: cx, y: top - gap * 2, r, cs });
+    }
+    return list;
+  }
+
+  actionButtonAt(x, y) {
+    for (const b of this.actionButtons()) {
+      if (Math.hypot(x - b.x, y - b.y) <= b.r * 1.15) return b.id;
+    }
+    return null;
+  }
+
   // 摇杆的感应区，右下角一块。这块之外的拖拽全部归转视角。
   stickZone() {
     const h = this.stickHome();
     const pad = h.r * 2.3;
-    return { x: Math.max(this.vw() * 0.42, h.x - pad), y: Math.max(0, h.y - pad) };
+    // 上边界不能高过动作键，否则按键会被当成推摇杆
+    const acts = this.actionButtons();
+    const lowest = acts.length ? Math.max(...acts.map((b) => b.y + b.r + b.cs * 1.6)) : 0;
+    return { x: Math.max(this.vw() * 0.42, h.x - pad),
+             y: Math.max(lowest, h.y - pad) };
   }
 
   stickHome() {
@@ -619,6 +691,28 @@ export class Overlay {
         p.noStroke(); p.fill(248, 245, 238, 240);
         p.circle(0, 0, s * 0.52);
         break;
+      case 'talk':                                  // 对话气泡
+        p.noFill();
+        p.beginShape();
+        p.vertex(-s * 0.72, -s * 0.5); p.vertex(s * 0.72, -s * 0.5);
+        p.vertex(s * 0.72, s * 0.22); p.vertex(-s * 0.16, s * 0.22);
+        p.vertex(-s * 0.44, s * 0.62); p.vertex(-s * 0.44, s * 0.22);
+        p.vertex(-s * 0.72, s * 0.22);
+        p.endShape(p.CLOSE);
+        break;
+      case 'pose':                                  // 站起来的小人：一竖两撇
+        p.line(0, -s * 0.34, 0, s * 0.28);
+        p.circle(0, -s * 0.6, s * 0.34);
+        p.line(0, s * 0.28, -s * 0.34, s * 0.72);
+        p.line(0, s * 0.28, s * 0.34, s * 0.72);
+        p.line(-s * 0.42, -s * 0.1, s * 0.42, -s * 0.1);
+        break;
+      case 'land':                                  // 向下的箭头落到一条线上
+        p.line(0, -s * 0.62, 0, s * 0.24);
+        p.line(-s * 0.3, -s * 0.08, 0, s * 0.24);
+        p.line(s * 0.3, -s * 0.08, 0, s * 0.24);
+        p.line(-s * 0.56, s * 0.58, s * 0.56, s * 0.58);
+        break;
       case 'sound': {                               // 喇叭；没通的时候划一杠
         const live = this.game?.audio?.live;
         p.beginShape();
@@ -641,6 +735,27 @@ export class Overlay {
         p.noStroke(); p.fill(248, 245, 238, 230);
         p.arc(0, 0, s * 1.35, s * 1.35, Math.PI * 0.5, Math.PI * 1.5);
         break;
+    }
+    p.pop();
+  }
+
+  _drawActionUI(p) {
+    p.push();
+    for (const b of this.actionButtons()) {
+      p.noStroke();
+      p.fill(26, 24, 21, 108);
+      p.circle(b.x, b.y, b.r * 2);
+      p.noFill();
+      p.stroke(250, 247, 240, 165);
+      p.strokeWeight(1.8);
+      p.circle(b.x, b.y, b.r * 2);
+      this._icon(p, b.icon, b.x, b.y, b.r);
+      p.noStroke();
+      p.fill(250, 247, 240, 190);
+      p.textFont(SANS);
+      p.textAlign(p.CENTER, p.CENTER);
+      p.textSize(b.cs);
+      p.text(b.cap, b.x, b.y + b.r + Math.max(9, b.cs));
     }
     p.pop();
   }
