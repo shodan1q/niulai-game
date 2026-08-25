@@ -1,6 +1,9 @@
 import p5 from 'p5';
 import { makePaper, wetBlob, farMountains, groundWash, inkBull, inkLark, seal, mulberry } from './ink.js';
 import { SERIF, SANS } from './fonts.js';
+
+// 触屏视角键的键面文字，键上直接写当前是哪个视角
+const VIEW_CAP = { third: '三人称', shoulder: '肩后', first: '第一人称' };
 import { SCENES, SCENE_TITLES } from '../data/script.js';
 
 // p5 层。铺在 three.js 上面，负责一切二维的东西：
@@ -582,7 +585,9 @@ export class Overlay {
         x: jx, y: jy, r: jr, cs, big: true },
       mk('shout', 'shout', '叫', top),
       mk('animal', 'swap', '换', top - gap),
-      mk('view', 'eye', '视角', top - gap * 2),
+      // 键面直接写当前是哪个视角。第一人称会把角色模型藏掉，
+      // 不标出来的话看着就像"人没了"，在手机上尤其没法自查。
+      mk('view', 'eye', VIEW_CAP[this.game?.stage?.view] ?? '视角', top - gap * 2),
       mk('time', 'sun', '时辰', top - gap * 3),
       // 手机上原来既看不出声音开没开，也没法自己打开
       mk('sound', 'sound', '声音', top - gap * 4),
