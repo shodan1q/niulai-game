@@ -42,13 +42,13 @@ const REST = {
 //   UpLeg   x+ 脚往后      Leg x+ 脚往前
 //
 // 没配音乐——原曲有版权，游戏里只给一条自己合成的鼓点当节拍。
-export const DANCES = ['basket', 'sway', 'shimmy', 'spin', 'lie'];
+export const DANCES = ['basket', 'sway', 'shimmy', 'spin'];
 export const DANCE_NAME = {
-  basket: '打篮球', sway: '左右摇', shimmy: '抖肩', spin: '转圈', lie: '躺平',
+  basket: '打篮球', sway: '左右摇', shimmy: '抖肩', spin: '转圈',
 };
 
 // bpm 决定每套的节奏，相位 ph 一拍走 2π
-const DANCE_BPM = { basket: 116, sway: 100, shimmy: 128, spin: 92, lie: 26 };
+const DANCE_BPM = { basket: 116, sway: 100, shimmy: 128, spin: 92 };
 
 function danceBasket(set, ph, T) {
   // 招牌的那套：一手在低位拍球，另一手甩开，重心一下一下颠，中间穿插抬腿
@@ -148,29 +148,28 @@ function danceSpin(set, ph) {
   set('RightLeg', -0.10, 0, 0);
 }
 
-function danceLie(set, ph) {
-  // 摆烂。仰面躺着，四肢摊开，只剩呼吸和偶尔抖一下脚。
-  // Hips 绕 x 转 -π/2 就把整个人放倒了，后面全是躺着的微调。
-  const br = Math.sin(ph) * 0.05;
-  set('Hips', -1.52, 0, 0.06);
-  set('Spine', -0.10 + br, 0, 0);
-  set('Spine1', -0.06 - br * 0.5, 0, 0);
-  set('Spine2', -0.04, 0, 0);
-  set('Neck', 0.30, 0, 0);
-  set('Head', 0.22, Math.sin(ph * 0.4) * 0.18, 0);
+// 趴下。k 是 0~1 的程度，站到趴之间要能连续过渡，不然一按就瞬移。
+// Hips 绕 x 转 -π/2 把整个人放倒，后面全是躺着的微调。
+function poseLie(set, k, ph) {
+  const br = Math.sin(ph) * 0.05 * k;
+  set('Hips', -1.52 * k, 0, 0.06 * k);
+  set('Spine', -0.10 * k + br, 0, 0);
+  set('Spine1', -0.06 * k - br * 0.5, 0, 0);
+  set('Spine2', -0.04 * k, 0, 0);
+  set('Neck', 0.30 * k, 0, 0);
+  set('Head', 0.22 * k, Math.sin(ph * 0.4) * 0.18 * k, 0);
   // 手脚摊开
-  set('LeftArm', -0.95, 0, -0.75);
-  set('RightArm', -0.95, 0, 0.75);
-  set('LeftForeArm', 0.30, 0, 0);
-  set('RightForeArm', 0.30, 0, 0);
-  set('LeftUpLeg', 0.20, 0, 0.24);
-  set('RightUpLeg', 0.20, 0, -0.24);
-  set('LeftLeg', -0.18 + Math.max(0, Math.sin(ph * 1.7)) * 0.14, 0, 0);
-  set('RightLeg', -0.14, 0, 0);
+  set('LeftArm', -0.95 * k, 0, -0.75 * k);
+  set('RightArm', -0.95 * k, 0, 0.75 * k);
+  set('LeftForeArm', 0.30 * k, 0, 0);
+  set('RightForeArm', 0.30 * k, 0, 0);
+  set('LeftUpLeg', 0.20 * k, 0, 0.24 * k);
+  set('RightUpLeg', 0.20 * k, 0, -0.24 * k);
+  set('LeftLeg', (-0.18 + Math.max(0, Math.sin(ph * 1.7)) * 0.14) * k, 0, 0);
+  set('RightLeg', -0.14 * k, 0, 0);
 }
 
-const DANCE_FN = { basket: danceBasket, sway: danceSway, shimmy: danceShimmy,
-                   spin: danceSpin, lie: danceLie };
+const DANCE_FN = { basket: danceBasket, sway: danceSway, shimmy: danceShimmy, spin: danceSpin };
 
 // 滑铲的姿势。k 是 0~1 的进入程度，Actor 那边按滑了多久算好再传进来。
 // 一条腿伸出去、一条收着，上身往后仰，手往后甩——标准的铲球姿势。
@@ -234,13 +233,23 @@ export class Rig {
    */
   update(dt, speed, run, opts = {}) {
     if (!this.ok) return;
-    const { grounded = true, vy = 0, yawRate = 0, talking = 0, flying = 0, slide = 0 } = opts;
+    const { grounded = true, vy = 0, yawRate = 0, talking = 0, flying = 0,
+            slide = 0, lie = 0 } = opts;
 
     // 滑铲优先级最高：正在铲的时候不管走跑也不管跳舞
     if (slide > 0.01) {
       const set = (name, x, y, z) => this._set(name, x, y, z);
       this.b.Hips.position.y = this.b.Hips.userData.baseY * (1 - 0.30 * slide);
       poseSlide(set, slide, this.t);
+      return;
+    }
+
+    // 趴着：整套姿势由躺姿接管。lie 是 0~1 的过渡值，由 Actor 那边平滑好传进来
+    if (lie > 0.01) {
+      const set = (name, x, y, z) => this._set(name, x * lie, y * lie, z * lie);
+      this.lieT = (this.lieT ?? 0) + dt;
+      this.b.Hips.position.y = this.b.Hips.userData.baseY * (1 - 0.72 * lie);
+      poseLie(set, 1, this.lieT * 1.6);
       return;
     }
 

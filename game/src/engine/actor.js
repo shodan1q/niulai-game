@@ -82,6 +82,8 @@ export class Actor {
     this.danceT = 0;
     this.slide = 0;         // 滑铲剩余时间，>0 表示正在滑
     this.slideT = 0;        // 已经滑了多久，姿势按它插值
+    this.lieWant = 0;       // 想不想趴着，0 或 1
+    this.lie = 0;           // 实际的趴着程度，向 lieWant 平滑过去
 
     this._applyScale();
   }
@@ -147,6 +149,7 @@ export class Actor {
   }
 
   jump(power = 5.2) {
+    if (this.lieWant > 0.5) this.toggleLie(0);   // 想跳就先起来
     if (!this.grounded) return false;
     this.vy = power;
     this.grounded = false;
@@ -156,12 +159,20 @@ export class Actor {
 
   startle() { this.emote = 1; }
 
+  // 站 ↔ 趴。传 undefined 就是切换。返回切换后是不是趴着。
+  toggleLie(want) {
+    const v = want === undefined ? (this.lieWant > 0.5 ? 0 : 1) : (want ? 1 : 0);
+    this.lieWant = v;
+    if (v) { this.setDance(null); this.velocity.set(0, 0, 0); }
+    return v > 0.5;
+  }
+
   /**
    * 滑铲。给一记向前的冲量，然后靠摩擦自己停下来。
    * 只有站在地上、而且有速度的时候才铲得动——站着原地铲没有意义。
    */
   startSlide({ boost = 1.55, dur = 0.85, min = 2.0 } = {}) {
-    if (!this.grounded || this.slide > 0) return false;
+    if (!this.grounded || this.slide > 0 || this.lieWant > 0.5) return false;
     const sp = Math.hypot(this.velocity.x, this.velocity.z);
     if (sp < min) return false;
     this.slide = dur;
@@ -250,6 +261,10 @@ export class Actor {
       this.baseScale.z * sxz,
     );
 
+    // 站趴之间做平滑，按一下不会瞬移
+    this.lie += (this.lieWant - this.lie) * Math.min(1, dt * 6);
+    if (this.lie < 0.002) this.lie = 0;
+
     // 滑铲：摩擦一路吃掉速度，慢到一定程度就自动起身
     if (this.slide > 0) {
       this.slide -= dt;
@@ -267,6 +282,7 @@ export class Actor {
         grounded: this.grounded, vy: this.vy, yawRate: this.yawRate,
         talking: this.talking, flying: this.flying || 0,
         slide: this.slide > 0 ? Math.min(1, this.slideT / 0.12) : 0,
+        lie: this.lie,
       });
     } else if (this.slide > 0) {
       // 掰不动关节的，就把整个身子压平、往前扑，再侧倒一点
@@ -277,6 +293,16 @@ export class Actor {
       this.pivot.position.y = -0.16 * k * this.height;
       this.pivot.rotation.x = this.basePitch + 0.75 * k;
       this.pivot.rotation.z = 0.28 * k;
+      this.pivot.rotation.y = 0;
+    } else if (this.lie > 0.01) {
+      // 掰不动关节的，把身子压扁摊平贴在地上
+      const k = this.lie;
+      this.pivot.scale.set(this.baseScale.x * (1 + 0.30 * k),
+                           this.baseScale.y * (1 - 0.62 * k),
+                           this.baseScale.z * (1 + 0.34 * k));
+      this.pivot.position.y = -0.22 * k * this.height;
+      this.pivot.rotation.x = this.basePitch + 0.22 * k + Math.sin(this.breath) * 0.02 * k;
+      this.pivot.rotation.z = 0.10 * k;
       this.pivot.rotation.y = 0;
     } else if (this.dancing) {
       // 没骨架的四种：掰不动关节，只能整体来。幅度给足，要的就是那个劲儿。

@@ -611,7 +611,8 @@ export class Overlay {
       { id: 'dance', icon: 'dance', cap: this.game?.danceName?.() ?? '舞',
         x: cx, y: top - gap, r, cs },
       { id: 'slide', icon: 'slide', cap: '铲', x: cx, y: top - gap * 2, r, cs },
-      { id: 'pose', icon: 'pose', cap: '站', x: cx, y: top - gap * 3, r, cs },
+      { id: 'pose', icon: this.game?.player?.lieWant > 0.5 ? 'stand' : 'lie',
+        cap: this.game?.lieCap?.() ?? '趴', x: cx, y: top - gap * 3, r, cs },
     ];
     // 会飞的多给一个"降落"，飞高了想下来不用等它自己掉
     if (this.game?.animal?.fly) {
@@ -724,6 +725,20 @@ export class Overlay {
         p.line(-s * 0.06, s * 0.20, s * 0.34, s * 0.70);
         p.line(s * 0.04, -s * 0.24, -s * 0.52, -s * 0.42);
         p.line(s * 0.04, -s * 0.24, s * 0.56, -s * 0.66);
+        break;
+      case 'lie':                                   // 躺倒的人
+        p.line(-s * 0.66, s * 0.40, s * 0.50, s * 0.40);
+        p.circle(s * 0.52, s * 0.10, s * 0.30);
+        p.line(s * 0.36, s * 0.16, -s * 0.30, s * 0.24);
+        p.line(-s * 0.30, s * 0.24, -s * 0.66, s * 0.02);
+        p.line(-s * 0.30, s * 0.24, -s * 0.40, s * 0.40);
+        break;
+      case 'stand':                                 // 站着的人
+        p.circle(0, -s * 0.62, s * 0.32);
+        p.line(0, -s * 0.42, 0, s * 0.20);
+        p.line(0, s * 0.20, -s * 0.28, s * 0.74);
+        p.line(0, s * 0.20, s * 0.28, s * 0.74);
+        p.line(-s * 0.34, -s * 0.10, s * 0.34, -s * 0.10);
         break;
       case 'pose':                                  // 站起来的小人：一竖两撇
         p.line(0, -s * 0.34, 0, s * 0.28);

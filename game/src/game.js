@@ -132,6 +132,7 @@ export class Game {
     this.player.vy = 0;
     this.player.position.y = 0;
     this.player.setDance(null);
+    this.player.toggleLie(0);
     this._bankSide = null;
     this._wasAirborne = false;
     this.stage.camYaw = 0;
@@ -227,6 +228,27 @@ export class Game {
     return a;
   }
 
+  // 站 ↔ 趴。趴下就是摆烂那一档，顺手念叨一句。
+  doLie() {
+    const lying = this.player.toggleLie();
+    if (lying) {
+      this._lieN = (this._lieN ?? -1) + 1;
+      const lies = [
+        '躺平了。秋招？明天再说。',
+        '不想上班。草原也挺好。',
+        '牛马也是要休息的。',
+        '已读乱回，起身困难。',
+      ];
+      this.overlay.showToast(lies[this._lieN % lies.length]);
+    } else {
+      this.overlay.showToast('起来了。');
+    }
+    return lying;
+  }
+
+  // 触屏那个键上写「趴」还是「站」，看现在是什么姿势
+  lieCap() { return this.player?.lieWant > 0.5 ? '站' : '趴'; }
+
   // 秋招那一层。牛来不想上班，滑铲和躺平的时候念叨两句。
   // 这些跟电影剧情完全分开——章节里的文本还是只写查得到的情节。
   doSlide() {
@@ -257,18 +279,7 @@ export class Game {
     const next = i + 1 >= DANCES.length ? null : DANCES[i + 1];
     this.player.setDance(next);
     this._beatT = 0;
-    if (next === 'lie') {
-      this._lieN = (this._lieN ?? -1) + 1;
-      const lies = [
-        '躺平了。秋招？明天再说。',
-        '不想上班。草原也挺好。',
-        '牛马也是要休息的。',
-        '已读乱回，起身困难。',
-      ];
-      this.overlay.showToast(lies[this._lieN % lies.length]);
-    } else {
-      this.overlay.showToast(next ? `${DANCE_NAME[next]}　再点换下一个` : '不跳了');
-    }
+    this.overlay.showToast(next ? `${DANCE_NAME[next]}　再点换下一个` : '不跳了');
     return next;
   }
 
@@ -457,9 +468,7 @@ export class Game {
           if (this.runner.active) this.runner.advance();
           else this.input.confirmPressed = true;
         } else if (act === 'pose') {
-          const st = this.player.stanceTarget > 0.5 ? 0.1 : 1;
-          this.player.setStance(st);
-          this.overlay.showToast(st > 0.5 ? '站起来了' : '四条腿，踏实多了');
+          this.doLie();
         } else if (act === 'slide') {
           this.doSlide();
         } else if (act === 'dance') {
@@ -591,14 +600,10 @@ export class Game {
     if (this.input.takeJump()) this.doJump();
     this.updateFlight(dt);
 
-    if (this.input.takePose()) {
-      const s = this.player.stanceTarget > 0.5 ? 0.1 : 1;
-      this.player.setStance(s);
-      if (!this._posedOnce) {
-        this._posedOnce = true;
-        this.overlay.showToast(s > 0.5 ? '牛来站起来了。牛在平地上直立行走，这事原片干过。' : '四条腿，踏实多了。');
-      }
-    }
+    // P 键跟触屏那个「趴/站」键是同一件事。
+    // 原来这里切的是直立／四足——牛来换成带骨架的双足模型之后那个开关对它
+    // 已经不起作用了（骨架模型跳过体型变换），按了没反应，所以让位给站趴。
+    if (this.input.takePose()) this.doLie();
 
     const ax = this.input.axis;
     const cy = this.stage.camYaw;
@@ -609,6 +614,8 @@ export class Game {
     const moving = _d.lengthSq() > 1e-4;
     // 一推摇杆就停下不跳，边跳边走看着像卡帧
     if (moving && this.player.dancing) this.stopDance();
+    // 推摇杆就自己起来，趴着走路太怪
+    if (moving && this.player.lieWant > 0.5) this.player.toggleLie(0);
     // 铲出去那一下不接受操控，靠惯性滑完；否则一铲就能拐弯，没有分量
     if (this.player.slide > 0) {
       this.player.position.addScaledVector(this.player.velocity, dt);
