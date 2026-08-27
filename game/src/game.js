@@ -8,6 +8,7 @@ import { Audio } from './audio/audio.js';
 import { DIALOGUES, SCENE_TITLES, FEATHER_NOTES, SCENES } from './data/script.js';
 import { PLAYABLE, VIEWS, byId } from './data/animals.js';
 import { DayClock, sampleTime, blendMood } from './engine/daynight.js';
+import { DANCES, DANCE_NAME } from './engine/rig.js';
 
 import { prairie } from './scenes/prairie.js';
 import { deep } from './scenes/deep.js';
@@ -130,6 +131,7 @@ export class Game {
     this.player.grounded = true;
     this.player.vy = 0;
     this.player.position.y = 0;
+    this.player.setDance(null);
     this._bankSide = null;
     this._wasAirborne = false;
     this.stage.camYaw = 0;
@@ -167,6 +169,7 @@ export class Game {
   // 梦境那条河缺口 5.6 米，三种全速跑跳都过得去：
   //   牛来 9.4 米 / 豹拉 13.7 米 / 狗 10.5 米；走着跳只有 4~6 米。
   doJump() {
+    if (this.player.dancing) this.stopDance();
     const v = this.player.velocity;
     const a = this.animal;
     const k = Math.min(1, Math.hypot(v.x, v.z) / a.run);
@@ -209,6 +212,7 @@ export class Game {
     this.player.gravity = a.gravity ?? 14;
     this.player.runSpeed = a.run;
     this.player.flying = 0;
+    this.player.setDance(null);
     // 换成不会飞的时候人还在半空：让它正常落下就行，但别留着 held 状态
     if (!a.fly) this.input.jumpHeld = false;
     this.player.name = a.name;
@@ -221,6 +225,45 @@ export class Game {
     const body = a.line ? `${a.name}　${a.line}` : `${a.name}${tag}　${a.note}`;
     this.overlay.showToast(a.hint ? `${body}\n${a.hint}` : body);
     return a;
+  }
+
+  // 换下一套舞；跳完一轮回到不跳。牛来和牛妈有骨架，动作是关节级的；
+  // 其余三种掰不动关节，退回整体的蹦跳摇摆。
+  cycleDance() {
+    const cur = this.player.dancing;
+    const i = cur ? DANCES.indexOf(cur) : -1;
+    const next = i + 1 >= DANCES.length ? null : DANCES[i + 1];
+    this.player.setDance(next);
+    this._beatT = 0;
+    this.overlay.showToast(next ? `${DANCE_NAME[next]}　再点换下一个` : '不跳了');
+    return next;
+  }
+
+  stopDance() {
+    if (!this.player.dancing) return;
+    this.player.setDance(null);
+    this.overlay.showToast('不跳了');
+  }
+
+  // 触屏那个键上直接写现在跳的是哪套
+  danceName() {
+    const d = this.player?.dancing;
+    return d ? DANCE_NAME[d] : '舞';
+  }
+
+  // 跳舞时打一条鼓点。没用原曲——那是有版权的，这里是合成器现敲的。
+  updateBeat(dt) {
+    const d = this.player?.dancing;
+    if (!d) { this._beatT = 0; return; }
+    const bpm = d === 'shimmy' ? 128 : d === 'sway' ? 100 : d === 'spin' ? 92 : 116;
+    this._beatT = (this._beatT ?? 0) + dt;
+    const step = 60 / bpm;
+    if (this._beatT >= step) {
+      this._beatT -= step;
+      this._beatN = (this._beatN ?? 0) + 1;
+      // 一轻一重，四拍一个循环
+      this.audio.land?.((this._beatN % 4 === 0) ? 0.5 : 0.16);
+    }
   }
 
   cycleView() {
@@ -383,6 +426,8 @@ export class Game {
           const st = this.player.stanceTarget > 0.5 ? 0.1 : 1;
           this.player.setStance(st);
           this.overlay.showToast(st > 0.5 ? '站起来了' : '四条腿，踏实多了');
+        } else if (act === 'dance') {
+          this.cycleDance();
         } else if (act === 'land') {
           // 主动落地：停止扑翼并往下压一把
           this.input.jumpHeld = false;
@@ -452,6 +497,11 @@ export class Game {
       this.audio.shout(vk, 0.9);
     }
     if (this.input.takeView() && this.state === 'play') this.cycleView();
+    if (this.input.takeDance() && this.state === 'play' && !this.busy && !this.runner.active) {
+      this.cycleDance();
+    }
+    if (this.input.takeDanceStop() && this.state === 'play') this.stopDance();
+    this.updateBeat(dt);
     if (this.input.takeAnimal() && this.state === 'play' && !this.busy && !this.runner.active) {
       this.switchAnimal(1);
     }
@@ -518,6 +568,8 @@ export class Game {
     _d.set(0, 0, 0).addScaledVector(_f, -ax.y).addScaledVector(_r, ax.x);
 
     const moving = _d.lengthSq() > 1e-4;
+    // 一推摇杆就停下不跳，边跳边走看着像卡帧
+    if (moving && this.player.dancing) this.stopDance();
     const a = this.animal;
     // 直立走得慢一点——但只罚"本来该四足却站起来"的（牛来），
     // 豹拉和狗本来就是这个姿态，不该跟着挨罚

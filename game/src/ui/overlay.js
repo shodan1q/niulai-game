@@ -608,11 +608,13 @@ export class Overlay {
     const top = h.y - h.r - r - cs * 2.0;
     const list = [
       { id: 'talk', icon: 'talk', cap: '说', x: cx, y: top, r, cs },
-      { id: 'pose', icon: 'pose', cap: '站', x: cx, y: top - gap, r, cs },
+      { id: 'dance', icon: 'dance', cap: this.game?.danceName?.() ?? '舞',
+        x: cx, y: top - gap, r, cs },
+      { id: 'pose', icon: 'pose', cap: '站', x: cx, y: top - gap * 2, r, cs },
     ];
     // 会飞的多给一个"降落"，飞高了想下来不用等它自己掉
     if (this.game?.animal?.fly) {
-      list.push({ id: 'land', icon: 'land', cap: '降', x: cx, y: top - gap * 2, r, cs });
+      list.push({ id: 'land', icon: 'land', cap: '降', x: cx, y: top - gap * 3, r, cs });
     }
     return list;
   }
@@ -704,6 +706,14 @@ export class Overlay {
         p.vertex(-s * 0.44, s * 0.62); p.vertex(-s * 0.44, s * 0.22);
         p.vertex(-s * 0.72, s * 0.22);
         p.endShape(p.CLOSE);
+        break;
+      case 'dance':                                 // 歪着的小人，一手举起
+        p.circle(s * 0.12, -s * 0.62, s * 0.32);
+        p.line(s * 0.12, -s * 0.44, -s * 0.06, s * 0.20);
+        p.line(-s * 0.06, s * 0.20, -s * 0.44, s * 0.72);
+        p.line(-s * 0.06, s * 0.20, s * 0.34, s * 0.70);
+        p.line(s * 0.04, -s * 0.24, -s * 0.52, -s * 0.42);
+        p.line(s * 0.04, -s * 0.24, s * 0.56, -s * 0.66);
         break;
       case 'pose':                                  // 站起来的小人：一竖两撇
         p.line(0, -s * 0.34, 0, s * 0.28);

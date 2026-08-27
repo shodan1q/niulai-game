@@ -78,6 +78,8 @@ export class Actor {
     this.talking = 0;       // >0 时点头
     this.emote = 0;         // 一次性的"惊"，会自己衰减
     this.flying = 0;        // 0~1，正在扑翼的强度（只有云雀会）
+    this.dancing = null;    // 正在跳的舞，null 表示没跳
+    this.danceT = 0;
 
     this._applyScale();
   }
@@ -152,6 +154,19 @@ export class Actor {
 
   startle() { this.emote = 1; }
 
+  // 开始跳某一套；传 null 停下。返回现在跳的是哪套。
+  setDance(id) {
+    if (id !== this.dancing) this.danceT = 0;
+    this.dancing = id;
+    if (!id && !this.rig) {
+      // 停下时把整体形变复位，否则会保持在最后一帧的歪姿势
+      this.pivot.position.y = 0;
+      this.pivot.rotation.z = 0;
+      this.pivot.rotation.y = 0;
+    }
+    return this.dancing;
+  }
+
   update(dt, groundY = 0) {
     this.justLanded = 0;
     // 姿态过渡
@@ -216,10 +231,25 @@ export class Actor {
     );
 
     if (this.rig) {
+      this.rig.setDance(this.dancing);
       this.rig.update(dt, speed, this.runSpeed || 8, {
         grounded: this.grounded, vy: this.vy, yawRate: this.yawRate,
         talking: this.talking, flying: this.flying || 0,
       });
+    } else if (this.dancing) {
+      // 没骨架的四种：掰不动关节，只能整体来。幅度给足，要的就是那个劲儿。
+      this.danceT += dt * (this.dancing === 'shimmy' ? 4.6 : 3.2);
+      const p = this.danceT, s2 = Math.sin(p), c2 = Math.cos(p);
+      const hop = Math.abs(Math.sin(p));
+      this.pivot.scale.set(
+        this.baseScale.x * (1 + Math.sin(p * 2) * 0.14),
+        this.baseScale.y * (1 - Math.sin(p * 2) * 0.16),
+        this.baseScale.z * (1 + Math.sin(p * 2) * 0.14),
+      );
+      this.pivot.position.y = hop * 0.22 * this.height;
+      this.pivot.rotation.z = s2 * (this.dancing === 'sway' ? 0.42 : 0.22);
+      this.pivot.rotation.x = this.basePitch + c2 * 0.18;
+      this.pivot.rotation.y = this.dancing === 'spin' ? p * 2 : s2 * 0.35;
     }
 
     // 俯仰：起跳的时候整个身子往前扑，到顶收一点，下落时微微仰头准备落地。

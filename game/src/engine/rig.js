@@ -33,6 +33,123 @@ const REST = {
   Head:          [0.02, 0, 0],
 };
 
+
+// ---------------------------------------------------------------- 鬼畜
+//
+// 四套循环动作，按上面那张实测的轴向表写：
+//   Arm     x+ 手往下      z+ 左臂往前 / 右臂往后
+//   ForeArm x+ 小臂往下前
+//   UpLeg   x+ 脚往后      Leg x+ 脚往前
+//
+// 没配音乐——原曲有版权，游戏里只给一条自己合成的鼓点当节拍。
+export const DANCES = ['basket', 'sway', 'shimmy', 'spin'];
+export const DANCE_NAME = {
+  basket: '打篮球', sway: '左右摇', shimmy: '抖肩', spin: '转圈',
+};
+
+// bpm 决定每套的节奏，相位 ph 一拍走 2π
+const DANCE_BPM = { basket: 116, sway: 100, shimmy: 128, spin: 92 };
+
+function danceBasket(set, ph, T) {
+  // 招牌的那套：一手在低位拍球，另一手甩开，重心一下一下颠，中间穿插抬腿
+  const beat = Math.sin(ph);
+  const bounce = Math.abs(Math.sin(ph));
+  const bar = Math.floor(T / 4) % 4;        // 每四拍换一个花样
+
+  set('Hips', 0.08 + bounce * 0.10, Math.sin(ph * 0.5) * 0.30, Math.sin(ph * 0.5) * 0.10);
+  set('Spine', 0.10 - bounce * 0.06, Math.sin(ph * 0.5) * 0.16, 0);
+  set('Spine1', 0.06, 0, Math.sin(ph) * 0.06);
+  set('Neck', -0.10 + bounce * 0.10, Math.sin(ph * 0.5) * 0.20, 0);
+  set('Head', bounce * 0.12, Math.sin(ph * 0.5) * 0.18, 0);
+
+  if (bar === 0 || bar === 2) {
+    // 拍球：右手在低位一上一下，左手横着张开
+    set('RightArm', -0.30 + bounce * 0.55, 0, 0.15);
+    set('RightForeArm', 0.75 - bounce * 0.45, 0, 0);
+    set('LeftArm', -0.55, 0, -0.95);
+    set('LeftForeArm', 0.35, 0, 0);
+  } else if (bar === 1) {
+    // 两手交替往上甩
+    set('RightArm', -1.35 - Math.max(0, beat) * 0.45, 0, 0.30);
+    set('LeftArm', -1.35 - Math.max(0, -beat) * 0.45, 0, -0.30);
+    set('RightForeArm', 0.55, 0, 0);
+    set('LeftForeArm', 0.55, 0, 0);
+  } else {
+    // 双手侧平举画圈
+    set('RightArm', -0.85 + Math.sin(ph) * 0.35, 0, 0.55 + Math.cos(ph) * 0.30);
+    set('LeftArm', -0.85 + Math.sin(ph + 1) * 0.35, 0, -0.55 - Math.cos(ph) * 0.30);
+    set('RightForeArm', 0.30 + Math.max(0, beat) * 0.5, 0, 0);
+    set('LeftForeArm', 0.30 + Math.max(0, -beat) * 0.5, 0, 0);
+  }
+
+  // 腿：交替抬膝，抬的那条屈得深
+  const up = Math.max(0, beat), dn = Math.max(0, -beat);
+  set('LeftUpLeg', -up * 0.95, 0, 0);
+  set('RightUpLeg', -dn * 0.95, 0, 0);
+  set('LeftLeg', -up * 1.30 - 0.08, 0, 0);
+  set('RightLeg', -dn * 1.30 - 0.08, 0, 0);
+  set('LeftFoot', up * 0.35, 0, 0);
+  set('RightFoot', dn * 0.35, 0, 0);
+}
+
+function danceSway(set, ph) {
+  const s = Math.sin(ph), c = Math.cos(ph);
+  set('Hips', 0.05, 0, s * 0.28);
+  set('Spine', 0.06, s * 0.20, -s * 0.16);
+  set('Spine1', 0.04, 0, -s * 0.10);
+  set('Neck', -0.06, s * 0.24, 0);
+  set('Head', 0.04, s * 0.20, s * 0.12);
+  // 双手举过头顶来回摆
+  set('LeftArm', -1.75, 0, -0.25 + s * 0.45);
+  set('RightArm', -1.75, 0, 0.25 + s * 0.45);
+  set('LeftForeArm', 0.40 + c * 0.25, 0, 0);
+  set('RightForeArm', 0.40 - c * 0.25, 0, 0);
+  // 脚下小碎步
+  const st = Math.max(0, s), st2 = Math.max(0, -s);
+  set('LeftUpLeg', -st * 0.30, 0, 0);
+  set('RightUpLeg', -st2 * 0.30, 0, 0);
+  set('LeftLeg', -st * 0.45 - 0.06, 0, 0);
+  set('RightLeg', -st2 * 0.45 - 0.06, 0, 0);
+}
+
+function danceShimmy(set, ph) {
+  const fast = Math.sin(ph * 2);
+  set('Hips', 0.06, fast * 0.10, 0);
+  set('Spine', 0.05, fast * 0.22, 0);
+  set('Spine1', 0.03, -fast * 0.26, 0);
+  set('Spine2', 0, fast * 0.20, 0);
+  set('Neck', -0.05, -fast * 0.18, 0);
+  set('Head', 0.02, fast * 0.14, fast * 0.10);
+  // 手肘夹住身体，靠肩膀抖
+  set('LeftArm', -0.55, 0, -0.30 + fast * 0.20);
+  set('RightArm', -0.55, 0, 0.30 + fast * 0.20);
+  set('LeftForeArm', 1.25, 0, 0);
+  set('RightForeArm', 1.25, 0, 0);
+  const bob = Math.abs(Math.sin(ph));
+  set('LeftUpLeg', -bob * 0.16, 0, 0);
+  set('RightUpLeg', -bob * 0.16, 0, 0);
+  set('LeftLeg', -bob * 0.30 - 0.10, 0, 0);
+  set('RightLeg', -bob * 0.30 - 0.10, 0, 0);
+}
+
+function danceSpin(set, ph) {
+  // 身子自己转由 Actor 那边加 yaw，这里只管姿势
+  const s = Math.sin(ph);
+  set('Hips', 0.04, 0, s * 0.12);
+  set('Spine', 0.05, 0, -s * 0.10);
+  set('LeftArm', -1.45, 0, -0.75);
+  set('RightArm', -1.45, 0, 0.75);
+  set('LeftForeArm', 0.20, 0, 0);
+  set('RightForeArm', 0.20, 0, 0);
+  const lift = Math.max(0, s);
+  set('LeftUpLeg', -lift * 0.55, 0, 0);
+  set('LeftLeg', -lift * 0.85 - 0.06, 0, 0);
+  set('RightUpLeg', 0.05, 0, 0);
+  set('RightLeg', -0.10, 0, 0);
+}
+
+const DANCE_FN = { basket: danceBasket, sway: danceSway, shimmy: danceShimmy, spin: danceSpin };
+
 export class Rig {
   constructor(bones) {
     this.b = bones || {};
@@ -43,6 +160,9 @@ export class Rig {
     this.lean = 0;
     this.look = 0;
     this.idle = Math.random() * 6;
+    this.dance = null;      // 正在跳的那套的 id
+    this.danceT = 0;        // 已经跳了几拍
+    this.danceMix = 0;      // 0~1，进出舞蹈的过渡，免得姿势瞬间跳变
     this.ok = !!(this.b.Hips && this.b.LeftUpLeg && this.b.RightUpLeg);
     // 把站姿并进 rest：后面写的每一个角度都是"相对自然站姿"的增量，
     // T-Pose 那对平举的手臂只在这里减一次
@@ -72,6 +192,21 @@ export class Rig {
   update(dt, speed, run, opts = {}) {
     if (!this.ok) return;
     const { grounded = true, vy = 0, yawRate = 0, talking = 0, flying = 0 } = opts;
+
+    // 跳舞的时候整套姿势由舞蹈接管，走跑那套完全不参与
+    this.danceMix = damp(this.danceMix, this.dance ? 1 : 0, 6, dt);
+    if (this.dance && this.danceMix > 0.02) {
+      const bpm = DANCE_BPM[this.dance] || 110;
+      this.danceT += dt * (bpm / 60);
+      const ph = this.danceT * Math.PI * 2;
+      // 起手先把手臂从站姿抬起来，避免第一帧从垂手瞬间弹到举手
+      const mix = this.danceMix;
+      const set = (name, x, y, z) => this._set(name, x * mix, y * mix, z * mix);
+      this.b.Hips.position.y = this.b.Hips.userData.baseY
+        * (1 + Math.abs(Math.sin(ph)) * 0.06 * mix);
+      DANCE_FN[this.dance](set, ph, this.danceT);
+      return;
+    }
 
     const k = Math.min(1, speed / Math.max(run, 0.001));   // 0 站着，1 全速
     const moving = speed > 0.15;
@@ -151,6 +286,14 @@ export class Rig {
       this._set('LeftArm',  -1.20 * flying + w * 0.40, 0, 0);
       this._set('RightArm', -1.20 * flying + w * 0.40, 0, 0);
     }
+  }
+
+  // 开始／停止跳舞。传 null 就是停。
+  setDance(id) {
+    if (id && !DANCE_FN[id]) return this.dance;
+    if (id && id !== this.dance) this.danceT = 0;
+    this.dance = id;
+    return this.dance;
   }
 
   // 落地那一下压一压，由 Actor 在 justLanded 时调

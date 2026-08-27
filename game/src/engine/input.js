@@ -70,6 +70,8 @@ export class Input {
       if (e.code === 'KeyV') this.switchView = true;
       if (e.code === 'KeyT') this.nextTime = true;
       if (e.code === 'KeyB') this.toggleAmb = true;
+      if (e.code === 'KeyJ') this.danceKey = true;      // 换一套舞
+      if (e.code === 'KeyK') this.danceStop = true;     // 不跳了
       // 叫一声：Z 是牛来，X 是妈妈，C 是豹拉
       if (e.code === 'KeyZ') this.voiceKey = 'niulai';
       if (e.code === 'KeyX') this.voiceKey = 'mother';
@@ -180,4 +182,6 @@ export class Input {
   takeView() { const v = !!this.switchView; this.switchView = false; return v; }
   takeTime() { const v = !!this.nextTime; this.nextTime = false; return v; }
   takeAmb() { const v = !!this.toggleAmb; this.toggleAmb = false; return v; }
+  takeDance() { const v = !!this.danceKey; this.danceKey = false; return v; }
+  takeDanceStop() { const v = !!this.danceStop; this.danceStop = false; return v; }
 }
