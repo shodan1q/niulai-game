@@ -80,6 +80,8 @@ export class Actor {
     this.flying = 0;        // 0~1，正在扑翼的强度（只有云雀会）
     this.dancing = null;    // 正在跳的舞，null 表示没跳
     this.danceT = 0;
+    this.slide = 0;         // 滑铲剩余时间，>0 表示正在滑
+    this.slideT = 0;        // 已经滑了多久，姿势按它插值
 
     this._applyScale();
   }
@@ -153,6 +155,24 @@ export class Actor {
   }
 
   startle() { this.emote = 1; }
+
+  /**
+   * 滑铲。给一记向前的冲量，然后靠摩擦自己停下来。
+   * 只有站在地上、而且有速度的时候才铲得动——站着原地铲没有意义。
+   */
+  startSlide({ boost = 1.55, dur = 0.85, min = 2.0 } = {}) {
+    if (!this.grounded || this.slide > 0) return false;
+    const sp = Math.hypot(this.velocity.x, this.velocity.z);
+    if (sp < min) return false;
+    this.slide = dur;
+    this.slideT = 0;
+    this.setDance(null);
+    // 沿当前朝向加速，不是沿当前速度——铲出去的方向要跟身子一致
+    const f = Math.sin(this.yaw), g = Math.cos(this.yaw);
+    this.velocity.x = f * sp * boost;
+    this.velocity.z = g * sp * boost;
+    return true;
+  }
 
   // 开始跳某一套；传 null 停下。返回现在跳的是哪套。
   setDance(id) {
@@ -230,12 +250,34 @@ export class Actor {
       this.baseScale.z * sxz,
     );
 
+    // 滑铲：摩擦一路吃掉速度，慢到一定程度就自动起身
+    if (this.slide > 0) {
+      this.slide -= dt;
+      this.slideT += dt;
+      const fric = Math.pow(0.16, dt);
+      this.velocity.x *= fric;
+      this.velocity.z *= fric;
+      if (!this.grounded || Math.hypot(this.velocity.x, this.velocity.z) < 0.5) this.slide = 0;
+      if (this.slide <= 0) this.slideT = 0;
+    }
+
     if (this.rig) {
       this.rig.setDance(this.dancing);
       this.rig.update(dt, speed, this.runSpeed || 8, {
         grounded: this.grounded, vy: this.vy, yawRate: this.yawRate,
         talking: this.talking, flying: this.flying || 0,
+        slide: this.slide > 0 ? Math.min(1, this.slideT / 0.12) : 0,
       });
+    } else if (this.slide > 0) {
+      // 掰不动关节的，就把整个身子压平、往前扑，再侧倒一点
+      const k = Math.min(1, this.slideT / 0.12);
+      this.pivot.scale.set(this.baseScale.x * (1 + 0.18 * k),
+                           this.baseScale.y * (1 - 0.42 * k),
+                           this.baseScale.z * (1 + 0.45 * k));
+      this.pivot.position.y = -0.16 * k * this.height;
+      this.pivot.rotation.x = this.basePitch + 0.75 * k;
+      this.pivot.rotation.z = 0.28 * k;
+      this.pivot.rotation.y = 0;
     } else if (this.dancing) {
       // 没骨架的四种：掰不动关节，只能整体来。幅度给足，要的就是那个劲儿。
       this.danceT += dt * (this.dancing === 'shimmy' ? 4.6 : 3.2);

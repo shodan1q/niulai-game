@@ -610,11 +610,12 @@ export class Overlay {
       { id: 'talk', icon: 'talk', cap: '说', x: cx, y: top, r, cs },
       { id: 'dance', icon: 'dance', cap: this.game?.danceName?.() ?? '舞',
         x: cx, y: top - gap, r, cs },
-      { id: 'pose', icon: 'pose', cap: '站', x: cx, y: top - gap * 2, r, cs },
+      { id: 'slide', icon: 'slide', cap: '铲', x: cx, y: top - gap * 2, r, cs },
+      { id: 'pose', icon: 'pose', cap: '站', x: cx, y: top - gap * 3, r, cs },
     ];
     // 会飞的多给一个"降落"，飞高了想下来不用等它自己掉
     if (this.game?.animal?.fly) {
-      list.push({ id: 'land', icon: 'land', cap: '降', x: cx, y: top - gap * 3, r, cs });
+      list.push({ id: 'land', icon: 'land', cap: '降', x: cx, y: top - gap * 4, r, cs });
     }
     return list;
   }
@@ -706,6 +707,15 @@ export class Overlay {
         p.vertex(-s * 0.44, s * 0.62); p.vertex(-s * 0.44, s * 0.22);
         p.vertex(-s * 0.72, s * 0.22);
         p.endShape(p.CLOSE);
+        break;
+      case 'slide':                                 // 躺倒的人加两道speed线
+        p.line(-s * 0.62, s * 0.34, s * 0.30, s * 0.34);
+        p.circle(s * 0.46, s * 0.16, s * 0.30);
+        p.line(s * 0.32, s * 0.26, -s * 0.20, s * 0.44);
+        p.line(-s * 0.20, s * 0.44, -s * 0.58, s * 0.20);
+        p.line(-s * 0.20, s * 0.44, -s * 0.34, s * 0.72);
+        p.line(-s * 0.66, -s * 0.16, s * 0.10, -s * 0.16);
+        p.line(-s * 0.50, -s * 0.48, s * 0.26, -s * 0.48);
         break;
       case 'dance':                                 // 歪着的小人，一手举起
         p.circle(s * 0.12, -s * 0.62, s * 0.32);

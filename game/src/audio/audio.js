@@ -247,6 +247,12 @@ export class Audio {
 
   splash() { if (this.ready && !this.muted) splash(this.ctx, this.sfxBus, { gain: 0.26 }); }
 
+  // 滑铲：贴地擦过去的一声长噪
+  slide() {
+    if (!this.ready || this.muted) return;
+    whoosh(this.ctx, this.sfxBus, { gain: 0.13, dur: 0.55 });
+  }
+
   // 云雀扑翼。一下一下的短促气声，不是叫声——叫声还是用影片素材。
   flap() {
     if (!this.ready || this.muted) return;

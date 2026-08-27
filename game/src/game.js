@@ -227,6 +227,28 @@ export class Game {
     return a;
   }
 
+  // 秋招那一层。牛来不想上班，滑铲和躺平的时候念叨两句。
+  // 这些跟电影剧情完全分开——章节里的文本还是只写查得到的情节。
+  doSlide() {
+    const ok = this.player.startSlide();
+    if (!ok) {
+      // 站着铲不动，说一声，别让人以为按键坏了
+      if (this.player.grounded) this.overlay.showToast('得先跑起来才铲得动');
+      return false;
+    }
+    this.audio.slide?.();
+    this._slideN = (this._slideN ?? -1) + 1;
+    const lines = [
+      '滑过去了。简历也是这么投的。',
+      '一铲子铲过秋招。',
+      '这一下比投三十份管用。',
+      '铲得动，就是不想站起来。',
+      '面试官问我职业规划，我铲了过去。',
+    ];
+    if (this._slideN % 2 === 0) this.overlay.showToast(lines[(this._slideN / 2) % lines.length]);
+    return true;
+  }
+
   // 换下一套舞；跳完一轮回到不跳。牛来和牛妈有骨架，动作是关节级的；
   // 其余三种掰不动关节，退回整体的蹦跳摇摆。
   cycleDance() {
@@ -235,7 +257,18 @@ export class Game {
     const next = i + 1 >= DANCES.length ? null : DANCES[i + 1];
     this.player.setDance(next);
     this._beatT = 0;
-    this.overlay.showToast(next ? `${DANCE_NAME[next]}　再点换下一个` : '不跳了');
+    if (next === 'lie') {
+      this._lieN = (this._lieN ?? -1) + 1;
+      const lies = [
+        '躺平了。秋招？明天再说。',
+        '不想上班。草原也挺好。',
+        '牛马也是要休息的。',
+        '已读乱回，起身困难。',
+      ];
+      this.overlay.showToast(lies[this._lieN % lies.length]);
+    } else {
+      this.overlay.showToast(next ? `${DANCE_NAME[next]}　再点换下一个` : '不跳了');
+    }
     return next;
   }
 
@@ -426,6 +459,8 @@ export class Game {
           const st = this.player.stanceTarget > 0.5 ? 0.1 : 1;
           this.player.setStance(st);
           this.overlay.showToast(st > 0.5 ? '站起来了' : '四条腿，踏实多了');
+        } else if (act === 'slide') {
+          this.doSlide();
         } else if (act === 'dance') {
           this.cycleDance();
         } else if (act === 'land') {
@@ -501,6 +536,9 @@ export class Game {
       this.cycleDance();
     }
     if (this.input.takeDanceStop() && this.state === 'play') this.stopDance();
+    if (this.input.takeSlide() && this.state === 'play' && !this.busy && !this.runner.active) {
+      this.doSlide();
+    }
     this.updateBeat(dt);
     if (this.input.takeAnimal() && this.state === 'play' && !this.busy && !this.runner.active) {
       this.switchAnimal(1);
@@ -570,6 +608,22 @@ export class Game {
     const moving = _d.lengthSq() > 1e-4;
     // 一推摇杆就停下不跳，边跳边走看着像卡帧
     if (moving && this.player.dancing) this.stopDance();
+    // 铲出去那一下不接受操控，靠惯性滑完；否则一铲就能拐弯，没有分量
+    if (this.player.slide > 0) {
+      this.player.position.addScaledVector(this.player.velocity, dt);
+      const bb = this.sceneDef.bounds;
+      const dd = Math.hypot(this.player.position.x, this.player.position.z);
+      if (dd > bb) {
+        const kk = bb / dd;
+        this.player.position.x *= kk; this.player.position.z *= kk;
+        this.player.velocity.multiplyScalar(0.3);
+      }
+      this.stage.updateCamera(dt, this.player.position);
+      this.stepWorld(dt);
+      this.checkRiver();
+      this.handleInteractions(dt);
+      return;
+    }
     const a = this.animal;
     // 直立走得慢一点——但只罚"本来该四足却站起来"的（牛来），
     // 豹拉和狗本来就是这个姿态，不该跟着挨罚

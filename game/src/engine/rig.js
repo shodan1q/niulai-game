@@ -42,13 +42,13 @@ const REST = {
 //   UpLeg   x+ 脚往后      Leg x+ 脚往前
 //
 // 没配音乐——原曲有版权，游戏里只给一条自己合成的鼓点当节拍。
-export const DANCES = ['basket', 'sway', 'shimmy', 'spin'];
+export const DANCES = ['basket', 'sway', 'shimmy', 'spin', 'lie'];
 export const DANCE_NAME = {
-  basket: '打篮球', sway: '左右摇', shimmy: '抖肩', spin: '转圈',
+  basket: '打篮球', sway: '左右摇', shimmy: '抖肩', spin: '转圈', lie: '躺平',
 };
 
 // bpm 决定每套的节奏，相位 ph 一拍走 2π
-const DANCE_BPM = { basket: 116, sway: 100, shimmy: 128, spin: 92 };
+const DANCE_BPM = { basket: 116, sway: 100, shimmy: 128, spin: 92, lie: 26 };
 
 function danceBasket(set, ph, T) {
   // 招牌的那套：一手在低位拍球，另一手甩开，重心一下一下颠，中间穿插抬腿
@@ -148,7 +148,50 @@ function danceSpin(set, ph) {
   set('RightLeg', -0.10, 0, 0);
 }
 
-const DANCE_FN = { basket: danceBasket, sway: danceSway, shimmy: danceShimmy, spin: danceSpin };
+function danceLie(set, ph) {
+  // 摆烂。仰面躺着，四肢摊开，只剩呼吸和偶尔抖一下脚。
+  // Hips 绕 x 转 -π/2 就把整个人放倒了，后面全是躺着的微调。
+  const br = Math.sin(ph) * 0.05;
+  set('Hips', -1.52, 0, 0.06);
+  set('Spine', -0.10 + br, 0, 0);
+  set('Spine1', -0.06 - br * 0.5, 0, 0);
+  set('Spine2', -0.04, 0, 0);
+  set('Neck', 0.30, 0, 0);
+  set('Head', 0.22, Math.sin(ph * 0.4) * 0.18, 0);
+  // 手脚摊开
+  set('LeftArm', -0.95, 0, -0.75);
+  set('RightArm', -0.95, 0, 0.75);
+  set('LeftForeArm', 0.30, 0, 0);
+  set('RightForeArm', 0.30, 0, 0);
+  set('LeftUpLeg', 0.20, 0, 0.24);
+  set('RightUpLeg', 0.20, 0, -0.24);
+  set('LeftLeg', -0.18 + Math.max(0, Math.sin(ph * 1.7)) * 0.14, 0, 0);
+  set('RightLeg', -0.14, 0, 0);
+}
+
+const DANCE_FN = { basket: danceBasket, sway: danceSway, shimmy: danceShimmy,
+                   spin: danceSpin, lie: danceLie };
+
+// 滑铲的姿势。k 是 0~1 的进入程度，Actor 那边按滑了多久算好再传进来。
+// 一条腿伸出去、一条收着，上身往后仰，手往后甩——标准的铲球姿势。
+function poseSlide(set, k, ph) {
+  set('Hips', -0.70 * k, 0, 0.30 * k);
+  set('Spine', -0.35 * k, 0, 0.16 * k);
+  set('Spine1', -0.22 * k, 0, 0.10 * k);
+  set('Neck', 0.45 * k, 0, 0);
+  set('Head', 0.25 * k, 0, 0);
+  // 前腿蹬直，后腿收在身下
+  set('LeftUpLeg', -1.05 * k, 0, 0.10 * k);
+  set('LeftLeg', 0.10 * k, 0, 0);
+  set('LeftFoot', -0.30 * k, 0, 0);
+  set('RightUpLeg', -0.30 * k, 0, -0.20 * k);
+  set('RightLeg', -1.55 * k, 0, 0);
+  // 手往后撑
+  set('LeftArm', 0.55 * k, 0, 0.65 * k);
+  set('RightArm', 0.55 * k, 0, -0.35 * k);
+  set('LeftForeArm', 0.45 * k, 0, 0);
+  set('RightForeArm', 0.70 * k, 0, 0);
+}
 
 export class Rig {
   constructor(bones) {
@@ -191,7 +234,15 @@ export class Rig {
    */
   update(dt, speed, run, opts = {}) {
     if (!this.ok) return;
-    const { grounded = true, vy = 0, yawRate = 0, talking = 0, flying = 0 } = opts;
+    const { grounded = true, vy = 0, yawRate = 0, talking = 0, flying = 0, slide = 0 } = opts;
+
+    // 滑铲优先级最高：正在铲的时候不管走跑也不管跳舞
+    if (slide > 0.01) {
+      const set = (name, x, y, z) => this._set(name, x, y, z);
+      this.b.Hips.position.y = this.b.Hips.userData.baseY * (1 - 0.30 * slide);
+      poseSlide(set, slide, this.t);
+      return;
+    }
 
     // 跳舞的时候整套姿势由舞蹈接管，走跑那套完全不参与
     this.danceMix = damp(this.danceMix, this.dance ? 1 : 0, 6, dt);
