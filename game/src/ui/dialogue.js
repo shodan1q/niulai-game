@@ -12,12 +12,19 @@ export class DialogueRunner {
     this.speakerColor = '#3b352c';
   }
 
+  // nodeKey 可以是树里的键，也可以直接传一个节点对象
+  // （闲聊那种轮换的小段落用得上，不必给每一句都在树里占一个键）。
   start(tree, nodeKey = 'start') {
-    if (!tree?.[nodeKey]) return false;
+    let key = nodeKey;
+    if (nodeKey && typeof nodeKey === 'object') {
+      key = '__adhoc';
+      tree = { ...tree, __adhoc: nodeKey };
+    }
+    if (!tree?.[key]) return false;
     this.tree = tree;
     this.speakerColor = tree.color || '#3b352c';
     this.active = true;
-    this._enter(nodeKey);
+    this._enter(key);
     return true;
   }
 

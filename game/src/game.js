@@ -406,6 +406,7 @@ export class Game {
     this.runner.awaitingChoice = false;
     this.flags.clear();
     this.talked.clear();
+    this._smallTalk?.clear();
     this.featherCount = 0;
     this.overlay.feathers = 0;
     this.overlay.setHint(null);
@@ -727,7 +728,14 @@ export class Game {
       );
       const pressed = this.input.takeConfirm() || !!this.input.takeClick();
       if (pressed && tree) {
-        const node = done ? (tree.repeat ? 'repeat' : null) : 'start';
+        let node = done ? (tree.repeat ? 'repeat' : null) : 'start';
+        // repeat 可以写成一组，反复搭话时轮着说，不至于一句翻来覆去
+        if (node === 'repeat' && Array.isArray(tree.repeat)) {
+          this._smallTalk ??= new Map();
+          const n = (this._smallTalk.get(best.dialogueId) ?? -1) + 1;
+          this._smallTalk.set(best.dialogueId, n);
+          node = { ...tree.repeat[n % tree.repeat.length] };
+        }
         if (node) {
           this.player.faceTowards(best.obj.position?.x ?? p.x, best.obj.position?.z ?? p.z);
           best.obj.faceTowards?.(p.x, p.z);
